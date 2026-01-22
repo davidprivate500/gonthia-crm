@@ -1,9 +1,9 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db, users } from '@/lib/db';
 import { loginSchema } from '@/validations/auth';
 import { verifyPassword } from '@/lib/auth/password';
-import { createSession } from '@/lib/auth/session';
-import { successResponse, validationError, unauthorizedError, safeInternalError, formatZodErrors } from '@/lib/api/response';
+import { createSession, createSessionCookie, getSessionCookieHeader } from '@/lib/auth/session';
+import { validationError, unauthorizedError, safeInternalError, formatZodErrors } from '@/lib/api/response';
 import { rateLimit } from '@/lib/ratelimit';
 import { logAuthEvent, logAuthSuccess } from '@/lib/audit/logger';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -78,8 +78,8 @@ export async function POST(request: NextRequest) {
       return unauthorizedError('Invalid email or password');
     }
 
-    // Create session
-    await createSession({
+    // Create session data
+    const sessionData = {
       userId: user.id,
       tenantId: user.tenantId,
       role: user.role,
@@ -87,7 +87,14 @@ export async function POST(request: NextRequest) {
       firstName: user.firstName || undefined,
       lastName: user.lastName || undefined,
       isMasterAdmin: user.isMasterAdmin,
-    });
+    };
+
+    // Create session using iron-session (sets cookie via next/headers)
+    await createSession(sessionData);
+
+    // Also manually create cookie header as a workaround for Next.js 15+ issues
+    const sealedCookie = await createSessionCookie(sessionData);
+    const cookieHeader = getSessionCookieHeader(sealedCookie);
 
     // BUG-009 FIX: Log successful login
     // For master admins, we don't have a tenantId
@@ -95,35 +102,27 @@ export async function POST(request: NextRequest) {
       logAuthSuccess(user.tenantId, user.id, 'login_success', clientInfo);
     }
 
-    // Handle master admin response (no organization)
-    if (user.isMasterAdmin) {
-      return successResponse({
-        user: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          isMasterAdmin: true,
-        },
-        organization: null, // Master admins have no organization
-      });
-    }
-
-    return successResponse({
+    // Prepare response data
+    const responseData = {
       user: {
         id: user.id,
         email: user.email,
         role: user.role,
         firstName: user.firstName,
         lastName: user.lastName,
-        isMasterAdmin: false,
+        isMasterAdmin: user.isMasterAdmin ?? false,
       },
-      organization: user.tenant ? {
-        id: user.tenant.id,
-        name: user.tenant.name,
-      } : null,
-    });
+      organization: user.isMasterAdmin
+        ? null
+        : user.tenant
+          ? { id: user.tenant.id, name: user.tenant.name }
+          : null,
+    };
+
+    // Return response with explicit Set-Cookie header
+    const response = NextResponse.json({ data: responseData });
+    response.headers.set('Set-Cookie', cookieHeader);
+    return response;
   } catch (error) {
     // BUG-027 FIX: Sanitized error response
     return safeInternalError(error, 'auth.login');

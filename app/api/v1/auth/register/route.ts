@@ -1,9 +1,9 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db, tenants, users, pipelineStages } from '@/lib/db';
 import { registerSchema } from '@/validations/auth';
 import { hashPassword } from '@/lib/auth/password';
-import { createSession } from '@/lib/auth/session';
-import { successResponse, validationError, conflictError, safeInternalError, formatZodErrors } from '@/lib/api/response';
+import { createSession, createSessionCookie, getSessionCookieHeader } from '@/lib/auth/session';
+import { validationError, conflictError, safeInternalError, formatZodErrors } from '@/lib/api/response';
 import { rateLimit } from '@/lib/ratelimit';
 import { eq } from 'drizzle-orm';
 
@@ -81,17 +81,25 @@ export async function POST(request: NextRequest) {
       return { tenant, user };
     });
 
-    // Create session (outside transaction - session failure shouldn't rollback data)
-    await createSession({
+    // Create session data
+    const sessionData = {
       userId: registrationResult.user.id,
       tenantId: registrationResult.tenant.id,
       role: registrationResult.user.role,
       email: registrationResult.user.email,
       firstName: registrationResult.user.firstName || undefined,
       lastName: registrationResult.user.lastName || undefined,
-    });
+    };
 
-    return successResponse({
+    // Create session (outside transaction - session failure shouldn't rollback data)
+    await createSession(sessionData);
+
+    // Also manually create cookie header as a workaround for Next.js 15+ issues
+    const sealedCookie = await createSessionCookie(sessionData);
+    const cookieHeader = getSessionCookieHeader(sealedCookie);
+
+    // Prepare response
+    const responseData = {
       user: {
         id: registrationResult.user.id,
         email: registrationResult.user.email,
@@ -103,7 +111,12 @@ export async function POST(request: NextRequest) {
         id: registrationResult.tenant.id,
         name: registrationResult.tenant.name,
       },
-    });
+    };
+
+    // Return response with explicit Set-Cookie header
+    const response = NextResponse.json({ data: responseData });
+    response.headers.set('Set-Cookie', cookieHeader);
+    return response;
   } catch (error) {
     // BUG-014 FIX: Handle unique constraint violation (TOCTOU race)
     if (error instanceof Error && error.message.includes('unique constraint')) {

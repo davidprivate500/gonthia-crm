@@ -1,4 +1,4 @@
-import { getIronSession, SessionOptions } from 'iron-session';
+import { getIronSession, SessionOptions, sealData } from 'iron-session';
 import { cookies } from 'next/headers';
 
 export type UserRole = 'owner' | 'admin' | 'member' | 'readonly';
@@ -38,10 +38,15 @@ export const sessionOptions: SessionOptions = {
   password: getSessionSecret(),
   cookieName: 'gonthia-session',
   cookieOptions: {
+    // Explicit path ensures cookie is valid for all routes
+    path: '/',
+    // Only require secure in production (HTTPS)
+    // In dev, leaving as false allows both HTTP and HTTPS
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
+    // Use 'lax' for reasonable CSRF protection while allowing normal navigation
     sameSite: 'lax' as const,
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7, // 7 days in seconds
   },
 };
 
@@ -73,6 +78,36 @@ export async function setSession(data: SessionData): Promise<void> {
 
 // Alias for consistency
 export const createSession = setSession;
+
+/**
+ * Create a sealed session cookie value that can be manually set in response headers.
+ * Use this as a workaround for Next.js 15+ cookie handling issues.
+ */
+export async function createSessionCookie(data: SessionData): Promise<string> {
+  const sealed = await sealData(data, {
+    password: sessionOptions.password,
+    ttl: sessionOptions.cookieOptions?.maxAge || 60 * 60 * 24 * 7,
+  });
+  return sealed;
+}
+
+/**
+ * Get the Set-Cookie header value for a session
+ */
+export function getSessionCookieHeader(sealedValue: string): string {
+  const opts = sessionOptions.cookieOptions || {};
+  const parts = [
+    `${sessionOptions.cookieName}=${sealedValue}`,
+    `Path=${opts.path || '/'}`,
+    `Max-Age=${opts.maxAge || 604800}`,
+  ];
+
+  if (opts.httpOnly) parts.push('HttpOnly');
+  if (opts.secure) parts.push('Secure');
+  if (opts.sameSite) parts.push(`SameSite=${opts.sameSite}`);
+
+  return parts.join('; ');
+}
 
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
