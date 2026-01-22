@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, importJobs } from '@/lib/db';
-import { requireAdmin } from '@/lib/auth/middleware';
+import { requireTenantAdmin } from '@/lib/auth/middleware';
 import { successResponse, notFoundError, internalError } from '@/lib/api/response';
 import { eq, and } from 'drizzle-orm';
 
@@ -10,7 +10,7 @@ interface RouteParams {
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireTenantAdmin(request);
     if (auth instanceof Response) {
       return auth;
     }

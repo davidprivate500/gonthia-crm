@@ -278,3 +278,51 @@ export async function requireTenantAuthWithCsrf(request: NextRequest): Promise<T
 
   return requireTenantAuth(request);
 }
+
+/**
+ * Require tenant write access (tenantId guaranteed non-null)
+ */
+export async function requireTenantWriteAccess(request?: NextRequest): Promise<TenantAuthContext | Response> {
+  const result = await requireWriteAccess(request);
+  if (result instanceof Response) {
+    return result;
+  }
+
+  if (!result.tenantId) {
+    return forbiddenError('Tenant access required');
+  }
+
+  return result as TenantAuthContext;
+}
+
+/**
+ * Require tenant admin access (tenantId guaranteed non-null)
+ */
+export async function requireTenantAdmin(request?: NextRequest): Promise<TenantAuthContext | Response> {
+  const result = await requireAdmin(request);
+  if (result instanceof Response) {
+    return result;
+  }
+
+  if (!result.tenantId) {
+    return forbiddenError('Tenant access required');
+  }
+
+  return result as TenantAuthContext;
+}
+
+/**
+ * Require tenant delete access (tenantId guaranteed non-null)
+ */
+export async function requireTenantDeleteAccess(request?: NextRequest): Promise<TenantAuthContext | Response> {
+  const result = await requireDeleteAccess(request);
+  if (result instanceof Response) {
+    return result;
+  }
+
+  if (!result.tenantId) {
+    return forbiddenError('Tenant access required');
+  }
+
+  return result as TenantAuthContext;
+}

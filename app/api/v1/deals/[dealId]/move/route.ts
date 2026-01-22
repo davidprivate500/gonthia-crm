@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, deals, pipelineStages } from '@/lib/db';
-import { requireWriteAccess } from '@/lib/auth/middleware';
+import { requireTenantWriteAccess } from '@/lib/auth/middleware';
 import { moveDealSchema } from '@/validations/deal';
 import { successResponse, validationError, notFoundError, internalError, formatZodErrors } from '@/lib/api/response';
 import { eq, and, isNull, gte, ne, sql } from 'drizzle-orm';
@@ -11,7 +11,7 @@ interface RouteParams {
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
-    const auth = await requireWriteAccess(request);
+    const auth = await requireTenantWriteAccess(request);
     if (auth instanceof Response) {
       return auth;
     }

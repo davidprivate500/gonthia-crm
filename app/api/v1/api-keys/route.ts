@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, apiKeys } from '@/lib/db';
-import { requireAdmin } from '@/lib/auth/middleware';
+import { requireTenantAdmin } from '@/lib/auth/middleware';
 import { createApiKeySchema, apiKeyQuerySchema } from '@/validations/api-key';
 import { generateApiKey, hashApiKey } from '@/lib/auth/password';
 import { canManageApiKeys } from '@/lib/auth/session';
@@ -9,7 +9,7 @@ import { eq, and, isNull, count } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireTenantAdmin(request);
     if (auth instanceof Response) {
       return auth;
     }
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireTenantAdmin(request);
     if (auth instanceof Response) {
       return auth;
     }

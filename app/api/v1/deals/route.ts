@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, deals, pipelineStages } from '@/lib/db';
-import { requireAuth, requireWriteAccess } from '@/lib/auth/middleware';
+import { requireTenantAuth, requireTenantWriteAccess } from '@/lib/auth/middleware';
 import { createDealSchema, dealQuerySchema } from '@/validations/deal';
 import { successResponse, validationError, notFoundError, internalError, formatZodErrors, paginatedResponse } from '@/lib/api/response';
 import { eq, and, isNull, ilike, count, gte, lte } from 'drizzle-orm';
@@ -8,7 +8,7 @@ import { toSearchPattern } from '@/lib/search';
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAuth(request);
+    const auth = await requireTenantAuth(request);
     if (auth instanceof Response) {
       return auth;
     }
@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireWriteAccess(request);
+    const auth = await requireTenantWriteAccess(request);
     if (auth instanceof Response) {
       return auth;
     }

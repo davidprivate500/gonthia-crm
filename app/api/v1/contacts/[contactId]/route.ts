@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, contacts, contactTags } from '@/lib/db';
-import { requireAuth, requireWriteAccess, requireDeleteAccess } from '@/lib/auth/middleware';
+import { requireTenantAuth, requireTenantWriteAccess, requireTenantDeleteAccess } from '@/lib/auth/middleware';
 import { updateContactSchema } from '@/validations/contact';
 import { successResponse, validationError, notFoundError, internalError, formatZodErrors } from '@/lib/api/response';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -11,7 +11,7 @@ interface RouteParams {
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const auth = await requireAuth(request);
+    const auth = await requireTenantAuth(request);
     if (auth instanceof Response) {
       return auth;
     }
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
-    const auth = await requireWriteAccess(request);
+    const auth = await requireTenantWriteAccess(request);
     if (auth instanceof Response) {
       return auth;
     }
@@ -154,7 +154,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
-    const auth = await requireDeleteAccess(request);
+    const auth = await requireTenantDeleteAccess(request);
     if (auth instanceof Response) {
       return auth;
     }

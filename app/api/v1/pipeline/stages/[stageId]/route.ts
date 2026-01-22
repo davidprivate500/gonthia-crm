@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, pipelineStages, deals } from '@/lib/db';
-import { requireAdmin } from '@/lib/auth/middleware';
+import { requireTenantAdmin } from '@/lib/auth/middleware';
 import { updatePipelineStageSchema } from '@/validations/deal';
 import { successResponse, validationError, notFoundError, conflictError, internalError, formatZodErrors } from '@/lib/api/response';
 import { eq, and, isNull, count } from 'drizzle-orm';
@@ -11,7 +11,7 @@ interface RouteParams {
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireTenantAdmin(request);
     if (auth instanceof Response) {
       return auth;
     }
@@ -71,7 +71,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireTenantAdmin(request);
     if (auth instanceof Response) {
       return auth;
     }

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, contacts, companies, deals } from '@/lib/db';
-import { requireAuth } from '@/lib/auth/middleware';
+import { requireTenantAuth } from '@/lib/auth/middleware';
 import { globalSearchSchema } from '@/validations/search';
 import { successResponse, validationError, internalError, formatZodErrors } from '@/lib/api/response';
 import { eq, and, isNull, ilike, or, sql } from 'drizzle-orm';
@@ -8,7 +8,7 @@ import { toSearchPattern } from '@/lib/search';
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAuth(request);
+    const auth = await requireTenantAuth(request);
     if (auth instanceof Response) {
       return auth;
     }

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, auditLogs } from '@/lib/db';
-import { requireAdmin } from '@/lib/auth/middleware';
+import { requireTenantAdmin } from '@/lib/auth/middleware';
 import { auditLogQuerySchema } from '@/validations/audit';
 import { canViewAuditLog } from '@/lib/auth/session';
 import { validationError, forbiddenError, internalError, formatZodErrors, paginatedResponse } from '@/lib/api/response';
@@ -8,7 +8,7 @@ import { eq, and, count, gte, lte } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireTenantAdmin(request);
     if (auth instanceof Response) {
       return auth;
     }

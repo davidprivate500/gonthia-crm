@@ -1,12 +1,12 @@
 import { NextRequest } from 'next/server';
 import { db, contacts, companies, deals, activities, pipelineStages } from '@/lib/db';
-import { requireAuth } from '@/lib/auth/middleware';
+import { requireTenantAuth } from '@/lib/auth/middleware';
 import { successResponse, internalError } from '@/lib/api/response';
 import { eq, and, isNull, count, sql, gte, asc } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAuth(request);
+    const auth = await requireTenantAuth(request);
     if (auth instanceof Response) {
       return auth;
     }

@@ -17,6 +17,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { activityId } = await params;
 
+    if (!auth.tenantId) {
+      return notFoundError('Activity not found');
+    }
+
     // Verify activity exists
     const existing = await db.query.activities.findFirst({
       where: and(
@@ -73,6 +77,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     const { activityId } = await params;
+
+    if (!auth.tenantId) {
+      return notFoundError('Activity not found');
+    }
 
     // Verify activity exists
     const existing = await db.query.activities.findFirst({

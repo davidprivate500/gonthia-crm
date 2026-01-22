@@ -1,13 +1,13 @@
 import { NextRequest } from 'next/server';
 import { db, importJobs } from '@/lib/db';
-import { requireAdmin } from '@/lib/auth/middleware';
+import { requireTenantAdmin } from '@/lib/auth/middleware';
 import { createImportJobSchema, importJobQuerySchema } from '@/validations/import';
 import { successResponse, validationError, internalError, formatZodErrors, paginatedResponse } from '@/lib/api/response';
 import { eq, and, count } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireTenantAdmin(request);
     if (auth instanceof Response) {
       return auth;
     }
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireTenantAdmin(request);
     if (auth instanceof Response) {
       return auth;
     }

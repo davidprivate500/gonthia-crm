@@ -22,6 +22,10 @@ export async function GET(request: NextRequest) {
       return forbiddenError('Only organization owners can export data');
     }
 
+    if (!auth.tenantId) {
+      return forbiddenError('Tenant access required');
+    }
+
     const { searchParams } = new URL(request.url);
     const result = exportSchema.safeParse(Object.fromEntries(searchParams));
 

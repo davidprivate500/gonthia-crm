@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, users } from '@/lib/db';
-import { requireAdmin, requireOwner } from '@/lib/auth/middleware';
+import { requireTenantAdmin, requireOwner } from '@/lib/auth/middleware';
 import { updateUserRoleSchema } from '@/validations/auth';
 import { successResponse, validationError, notFoundError, forbiddenError, internalError, formatZodErrors } from '@/lib/api/response';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -11,7 +11,7 @@ interface RouteParams {
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireTenantAdmin(request);
     if (auth instanceof Response) {
       return auth;
     }

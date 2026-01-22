@@ -1,13 +1,13 @@
 import { NextRequest } from 'next/server';
 import { db, pipelineStages } from '@/lib/db';
-import { requireAuth, requireAdmin } from '@/lib/auth/middleware';
+import { requireTenantAuth, requireTenantAdmin } from '@/lib/auth/middleware';
 import { pipelineStageSchema, reorderStagesSchema } from '@/validations/deal';
 import { successResponse, validationError, internalError, formatZodErrors } from '@/lib/api/response';
 import { eq, and, isNull, asc } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAuth(request);
+    const auth = await requireTenantAuth(request);
     if (auth instanceof Response) {
       return auth;
     }
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireTenantAdmin(request);
     if (auth instanceof Response) {
       return auth;
     }
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireTenantAdmin(request);
     if (auth instanceof Response) {
       return auth;
     }

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, tags, contactTags } from '@/lib/db';
-import { requireWriteAccess, requireDeleteAccess } from '@/lib/auth/middleware';
+import { requireTenantWriteAccess, requireTenantDeleteAccess } from '@/lib/auth/middleware';
 import { updateTagSchema } from '@/validations/tag';
 import { successResponse, validationError, notFoundError, conflictError, internalError, formatZodErrors } from '@/lib/api/response';
 import { eq, and, isNull, ne } from 'drizzle-orm';
@@ -11,7 +11,7 @@ interface RouteParams {
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
-    const auth = await requireWriteAccess(request);
+    const auth = await requireTenantWriteAccess(request);
     if (auth instanceof Response) {
       return auth;
     }
@@ -70,7 +70,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
-    const auth = await requireDeleteAccess(request);
+    const auth = await requireTenantDeleteAccess(request);
     if (auth instanceof Response) {
       return auth;
     }

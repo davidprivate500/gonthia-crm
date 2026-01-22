@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     const auth = await requireOwner(request);
     if (auth instanceof Response) {
       // Allow all authenticated users to view organization
-      const authAny = await (await import('@/lib/auth/middleware')).requireAuth(request);
+      const authAny = await (await import('@/lib/auth/middleware')).requireTenantAuth(request);
       if (authAny instanceof Response) {
         return authAny;
       }

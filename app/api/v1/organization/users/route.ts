@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, users, passwordResetTokens } from '@/lib/db';
-import { requireAdmin, requireAuth } from '@/lib/auth/middleware';
+import { requireTenantAdmin, requireTenantAuth } from '@/lib/auth/middleware';
 import { inviteUserSchema } from '@/validations/auth';
 import { hashPassword, generateResetToken, hashApiKey } from '@/lib/auth/password';
 import { canInviteRole } from '@/lib/auth/session';
@@ -10,7 +10,7 @@ import crypto from 'crypto';
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAuth(request);
+    const auth = await requireTenantAuth(request);
     if (auth instanceof Response) {
       return auth;
     }
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireTenantAdmin(request);
     if (auth instanceof Response) {
       return auth;
     }

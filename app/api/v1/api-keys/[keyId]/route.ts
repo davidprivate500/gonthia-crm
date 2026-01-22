@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db, apiKeys } from '@/lib/db';
-import { requireAdmin } from '@/lib/auth/middleware';
+import { requireTenantAdmin } from '@/lib/auth/middleware';
 import { canManageApiKeys } from '@/lib/auth/session';
 import { successResponse, notFoundError, forbiddenError, internalError } from '@/lib/api/response';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -11,7 +11,7 @@ interface RouteParams {
 
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireTenantAdmin(request);
     if (auth instanceof Response) {
       return auth;
     }

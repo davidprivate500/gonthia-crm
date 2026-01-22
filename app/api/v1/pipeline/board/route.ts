@@ -1,13 +1,13 @@
 import { NextRequest } from 'next/server';
 import { db, deals, pipelineStages } from '@/lib/db';
-import { requireAuth } from '@/lib/auth/middleware';
+import { requireTenantAuth } from '@/lib/auth/middleware';
 import { successResponse, internalError } from '@/lib/api/response';
 import { eq, and, isNull, asc } from 'drizzle-orm';
 
 // Get the complete pipeline board view (stages with deals)
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAuth(request);
+    const auth = await requireTenantAuth(request);
     if (auth instanceof Response) {
       return auth;
     }
