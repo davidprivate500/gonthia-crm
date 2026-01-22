@@ -13,6 +13,7 @@ import {
 import { api } from '@/lib/api/client';
 import { Users, Building2, Kanban, LayoutDashboard, Activity, Settings } from 'lucide-react';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useCommandPaletteStore } from '@/stores/command-palette';
 
 interface SearchResult {
   id: string;
@@ -30,7 +31,7 @@ interface SearchResults {
 
 export function CommandPalette() {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const { isOpen, close, toggle } = useCommandPaletteStore();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResults>({ contacts: [], companies: [], deals: [] });
   const [isSearching, setIsSearching] = useState(false);
@@ -42,13 +43,13 @@ export function CommandPalette() {
     const down = (e: KeyboardEvent) => {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        setOpen((open) => !open);
+        toggle();
       }
     };
 
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
-  }, []);
+  }, [toggle]);
 
   // Search when query changes
   useEffect(() => {
@@ -76,9 +77,9 @@ export function CommandPalette() {
   }, [debouncedQuery]);
 
   const navigate = useCallback((path: string) => {
-    setOpen(false);
+    close();
     router.push(path);
-  }, [router]);
+  }, [router, close]);
 
   const quickActions = [
     { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
@@ -92,7 +93,7 @@ export function CommandPalette() {
   const hasResults = results.contacts?.length > 0 || results.companies?.length > 0 || results.deals?.length > 0;
 
   return (
-    <CommandDialog open={open} onOpenChange={setOpen}>
+    <CommandDialog open={isOpen} onOpenChange={(open) => !open && close()}>
       <CommandInput
         placeholder="Search contacts, companies, deals..."
         value={query}

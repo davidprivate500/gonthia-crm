@@ -4,6 +4,7 @@ import { requireAuth, requireWriteAccess } from '@/lib/auth/middleware';
 import { createCompanySchema, companyQuerySchema } from '@/validations/company';
 import { successResponse, validationError, internalError, formatZodErrors, paginatedResponse } from '@/lib/api/response';
 import { eq, and, isNull, ilike, or, count } from 'drizzle-orm';
+import { toSearchPattern } from '@/lib/search';
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,10 +25,12 @@ export async function GET(request: NextRequest) {
     ];
 
     if (search) {
+      // BUG-008 FIX: Escape SQL LIKE wildcards in search term
+      const searchPattern = toSearchPattern(search);
       conditions.push(
         or(
-          ilike(companies.name, `%${search}%`),
-          ilike(companies.domain, `%${search}%`)
+          ilike(companies.name, searchPattern),
+          ilike(companies.domain, searchPattern)
         )!
       );
     }

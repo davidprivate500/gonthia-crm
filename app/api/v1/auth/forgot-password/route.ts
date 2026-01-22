@@ -3,9 +3,16 @@ import { db, users, passwordResetTokens } from '@/lib/db';
 import { forgotPasswordSchema } from '@/validations/auth';
 import { generateResetToken, hashApiKey } from '@/lib/auth/password';
 import { successResponse, validationError, internalError, formatZodErrors } from '@/lib/api/response';
+import { rateLimit } from '@/lib/ratelimit';
 import { eq, and, isNull } from 'drizzle-orm';
 
 export async function POST(request: NextRequest) {
+  // BUG-002 FIX: Rate limiting on forgot password endpoint
+  const rateLimitResponse = rateLimit(request, 'forgotPassword');
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   try {
     const body = await request.json();
     const result = forgotPasswordSchema.safeParse(body);

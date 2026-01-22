@@ -3,9 +3,16 @@ import { db, users, passwordResetTokens } from '@/lib/db';
 import { resetPasswordSchema } from '@/validations/auth';
 import { hashPassword, hashApiKey } from '@/lib/auth/password';
 import { successResponse, validationError, unauthorizedError, internalError, formatZodErrors } from '@/lib/api/response';
+import { rateLimit } from '@/lib/ratelimit';
 import { eq, and, gt, isNull } from 'drizzle-orm';
 
 export async function POST(request: NextRequest) {
+  // BUG-002 FIX: Rate limiting on reset password endpoint
+  const rateLimitResponse = rateLimit(request, 'resetPassword');
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   try {
     const body = await request.json();
     const result = resetPasswordSchema.safeParse(body);

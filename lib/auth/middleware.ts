@@ -4,26 +4,48 @@ import { unauthorizedError, forbiddenError } from '@/lib/api/response';
 import { db, apiKeys } from '@/lib/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { hashApiKey } from './password';
+import { verifyCsrf } from '@/lib/csrf';
 
 export interface AuthContext {
   userId: string;
-  tenantId: string;
+  tenantId: string | null; // null for master admins
   role: UserRole;
   email: string;
   isApiKey?: boolean;
+  isMasterAdmin?: boolean;
+}
+
+// Master admin auth context (tenantId is always null)
+export interface MasterAdminAuthContext extends AuthContext {
+  tenantId: null;
+  isMasterAdmin: true;
+}
+
+// Tenant auth context (tenantId is required)
+export interface TenantAuthContext extends AuthContext {
+  tenantId: string;
+  isMasterAdmin?: false;
 }
 
 // Verify API key and return auth context
 async function verifyApiKey(apiKey: string): Promise<AuthContext | null> {
   const keyHash = hashApiKey(apiKey);
 
+  // BUG-004 & BUG-006 FIX: Include creator's info to get their role and check if deleted
   const result = await db.query.apiKeys.findFirst({
     where: and(
       eq(apiKeys.keyHash, keyHash),
       isNull(apiKeys.revokedAt)
     ),
     with: {
-      // We need to get the creator's tenant info
+      createdBy: {
+        columns: {
+          id: true,
+          email: true,
+          role: true,
+          deletedAt: true,
+        },
+      },
     },
   });
 
@@ -31,17 +53,28 @@ async function verifyApiKey(apiKey: string): Promise<AuthContext | null> {
     return null;
   }
 
-  // Update last used timestamp
-  await db.update(apiKeys)
-    .set({ lastUsedAt: new Date() })
-    .where(eq(apiKeys.id, result.id));
+  // BUG-006 FIX: Check if the user who created the API key is deleted
+  if (!result.createdBy || result.createdBy.deletedAt) {
+    return null;
+  }
 
-  // API keys have admin-level access
+  // Check if API key is expired
+  if (result.expiresAt && result.expiresAt < new Date()) {
+    return null;
+  }
+
+  // Update last used timestamp (fire and forget)
+  db.update(apiKeys)
+    .set({ lastUsedAt: new Date() })
+    .where(eq(apiKeys.id, result.id))
+    .catch(err => console.error('Failed to update API key last used:', err));
+
+  // BUG-004 FIX: Return the creator's actual role instead of hardcoded 'admin'
   return {
     userId: result.createdById,
     tenantId: result.tenantId,
-    role: 'admin',
-    email: 'api-key',
+    role: result.createdBy.role,
+    email: result.createdBy.email,
     isApiKey: true,
   };
 }
@@ -74,6 +107,7 @@ export async function requireAuth(request?: NextRequest): Promise<AuthContext | 
     tenantId: session.tenantId,
     role: session.role,
     email: session.email,
+    isMasterAdmin: session.isMasterAdmin,
   };
 }
 
@@ -136,4 +170,111 @@ export async function requireDeleteAccess(request?: NextRequest): Promise<AuthCo
   }
 
   return result;
+}
+
+// BUG-007 FIX: CSRF-protected auth for state-changing operations
+export async function requireAuthWithCsrf(request: NextRequest): Promise<AuthContext | Response> {
+  // Check CSRF first for non-API-key requests
+  const csrfError = verifyCsrf(request);
+  if (csrfError) {
+    return csrfError;
+  }
+
+  return requireAuth(request);
+}
+
+// BUG-007 FIX: CSRF-protected write access
+export async function requireWriteAccessWithCsrf(request: NextRequest): Promise<AuthContext | Response> {
+  const csrfError = verifyCsrf(request);
+  if (csrfError) {
+    return csrfError;
+  }
+
+  return requireWriteAccess(request);
+}
+
+// BUG-007 FIX: CSRF-protected delete access
+export async function requireDeleteAccessWithCsrf(request: NextRequest): Promise<AuthContext | Response> {
+  const csrfError = verifyCsrf(request);
+  if (csrfError) {
+    return csrfError;
+  }
+
+  return requireDeleteAccess(request);
+}
+
+// BUG-007 FIX: CSRF-protected role check
+export async function requireRoleWithCsrf(
+  minRole: UserRole,
+  request: NextRequest
+): Promise<AuthContext | Response> {
+  const csrfError = verifyCsrf(request);
+  if (csrfError) {
+    return csrfError;
+  }
+
+  return requireRole(minRole, request);
+}
+
+// ============================================================================
+// MASTER ADMIN MIDDLEWARE
+// ============================================================================
+
+/**
+ * Require authenticated master admin (platform-level admin)
+ * Master admins have cross-tenant access and no tenantId
+ */
+export async function requireMasterAdmin(request?: NextRequest): Promise<MasterAdminAuthContext | Response> {
+  const result = await requireAuth(request);
+  if (result instanceof Response) {
+    return result;
+  }
+
+  if (!result.isMasterAdmin) {
+    return forbiddenError('Master admin access required');
+  }
+
+  return result as MasterAdminAuthContext;
+}
+
+/**
+ * CSRF-protected master admin authentication
+ */
+export async function requireMasterAdminWithCsrf(request: NextRequest): Promise<MasterAdminAuthContext | Response> {
+  const csrfError = verifyCsrf(request);
+  if (csrfError) {
+    return csrfError;
+  }
+
+  return requireMasterAdmin(request);
+}
+
+/**
+ * Require authenticated tenant user (not master admin)
+ * Ensures tenantId is present
+ */
+export async function requireTenantAuth(request?: NextRequest): Promise<TenantAuthContext | Response> {
+  const result = await requireAuth(request);
+  if (result instanceof Response) {
+    return result;
+  }
+
+  // Master admins don't have tenant context
+  if (result.isMasterAdmin || !result.tenantId) {
+    return forbiddenError('Tenant access required');
+  }
+
+  return result as TenantAuthContext;
+}
+
+/**
+ * CSRF-protected tenant authentication
+ */
+export async function requireTenantAuthWithCsrf(request: NextRequest): Promise<TenantAuthContext | Response> {
+  const csrfError = verifyCsrf(request);
+  if (csrfError) {
+    return csrfError;
+  }
+
+  return requireTenantAuth(request);
 }

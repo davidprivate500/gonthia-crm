@@ -4,6 +4,7 @@ import { requireAuth, requireWriteAccess } from '@/lib/auth/middleware';
 import { createDealSchema, dealQuerySchema } from '@/validations/deal';
 import { successResponse, validationError, notFoundError, internalError, formatZodErrors, paginatedResponse } from '@/lib/api/response';
 import { eq, and, isNull, ilike, count, gte, lte } from 'drizzle-orm';
+import { toSearchPattern } from '@/lib/search';
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,7 +25,8 @@ export async function GET(request: NextRequest) {
     ];
 
     if (search) {
-      conditions.push(ilike(deals.title, `%${search}%`));
+      // BUG-008 FIX: Escape SQL LIKE wildcards in search term
+      conditions.push(ilike(deals.title, toSearchPattern(search)));
     }
 
     if (stageId) {

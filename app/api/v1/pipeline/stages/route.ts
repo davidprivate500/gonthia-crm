@@ -84,15 +84,17 @@ export async function PUT(request: NextRequest) {
       return validationError(formatZodErrors(result.error));
     }
 
-    // Update positions
-    for (const { id, position } of result.data.stages) {
-      await db.update(pipelineStages)
-        .set({ position, updatedAt: new Date() })
-        .where(and(
-          eq(pipelineStages.id, id),
-          eq(pipelineStages.tenantId, auth.tenantId)
-        ));
-    }
+    // BUG-010 FIX: Update positions in a transaction to prevent race conditions
+    await db.transaction(async (tx) => {
+      for (const { id, position } of result.data.stages) {
+        await tx.update(pipelineStages)
+          .set({ position, updatedAt: new Date() })
+          .where(and(
+            eq(pipelineStages.id, id),
+            eq(pipelineStages.tenantId, auth.tenantId)
+          ));
+      }
+    });
 
     // Return updated stages
     const stages = await db.query.pipelineStages.findMany({

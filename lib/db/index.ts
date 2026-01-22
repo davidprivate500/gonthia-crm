@@ -9,5 +9,8 @@ if (!process.env.DATABASE_URL) {
 const client = postgres(process.env.DATABASE_URL, { prepare: false });
 export const db = drizzle(client, { schema });
 
+// BUG-001 FIX: Expose sql client for transactions
+export const sql = client;
+
 // Re-export schema for convenience
 export * from '@/drizzle/schema';

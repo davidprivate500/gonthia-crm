@@ -1,0 +1,1073 @@
+bugs:
+  - id: BUG-001
+    title: "Registration creates tenant and user without transaction - orphan risk"
+    area: auth
+    severity: P0
+    impact: "Orphaned tenant records if user creation fails, data inconsistency"
+    frequency: rare
+    confidence: high
+    evidence:
+      - type: codepath
+        ref: "app/api/v1/auth/register/route.ts:29-52"
+    repro:
+      preconditions:
+        - "Database constraint violation on user insert (e.g., duplicate email race condition)"
+      steps:
+        - "Two users register simultaneously with same email"
+        - "Both pass email uniqueness check"
+        - "First creates tenant + user successfully"
+        - "Second creates tenant, then fails on user (duplicate email)"
+      expected: "No orphaned tenant records"
+      actual: "Orphaned tenant exists with no users"
+    suspected_root_cause:
+      summary: "No transaction wrapping tenant + user creation. Neon HTTP driver note says 'doesn't support true transactions'"
+      code_refs:
+        - "app/api/v1/auth/register/route.ts:29-36"
+        - "lib/db/index.ts:9"
+    fix_plan:
+      approach: "Wrap in transaction or use postgres-js transaction support. Add cleanup on failure."
+      files_likely_touched:
+        - "app/api/v1/auth/register/route.ts"
+        - "lib/db/index.ts"
+      migrations: none
+      risks:
+        - "Connection pool behavior under transaction"
+      rollback: "Revert to non-transactional if issues arise"
+    acceptance_tests:
+      - type: integration
+        description: "Concurrent registration with same email leaves no orphan tenants"
+      - type: unit
+        description: "Failed user creation rolls back tenant creation"
+    owner_suggestion: backend
+    estimated_effort: M
+
+  - id: BUG-002
+    title: "No rate limiting on authentication endpoints"
+    area: auth
+    severity: P0
+    impact: "Brute force attacks on login, password reset flooding, DoS vulnerability"
+    frequency: always
+    confidence: high
+    evidence:
+      - type: codepath
+        ref: "app/api/v1/auth/login/route.ts"
+      - type: codepath
+        ref: "app/api/v1/auth/forgot-password/route.ts"
+    repro:
+      preconditions: []
+      steps:
+        - "Send 1000 login requests in 1 second"
+      expected: "Rate limited after threshold"
+      actual: "All requests processed"
+    suspected_root_cause:
+      summary: "No rate limiting middleware implemented on any endpoint"
+      code_refs:
+        - "app/api/v1/auth/login/route.ts:1-50"
+    fix_plan:
+      approach: "Implement rate limiting middleware using upstash/ratelimit or vercel edge config"
+      files_likely_touched:
+        - "lib/ratelimit/index.ts (new)"
+        - "app/api/v1/auth/login/route.ts"
+        - "app/api/v1/auth/forgot-password/route.ts"
+        - "app/api/v1/auth/register/route.ts"
+      migrations: none
+      risks:
+        - "Legitimate users blocked if limits too aggressive"
+      rollback: "Disable rate limit checks"
+    acceptance_tests:
+      - type: integration
+        description: "Login endpoint returns 429 after 5 failed attempts in 1 minute"
+      - type: load
+        description: "Password reset endpoint blocks after 3 requests per email per hour"
+    owner_suggestion: backend
+    estimated_effort: M
+
+  - id: BUG-003
+    title: "SESSION_SECRET has insecure fallback in production"
+    area: auth
+    severity: P0
+    impact: "Session forgery if deployed without SESSION_SECRET env var"
+    frequency: sometimes
+    confidence: high
+    evidence:
+      - type: codepath
+        ref: "lib/auth/session.ts:16"
+    repro:
+      preconditions:
+        - "Deploy without SESSION_SECRET environment variable"
+      steps:
+        - "Application starts with fallback secret"
+        - "Attacker can forge sessions using known secret"
+      expected: "Application refuses to start without SESSION_SECRET"
+      actual: "Application uses predictable fallback"
+    suspected_root_cause:
+      summary: "Fallback value 'complex_password_at_least_32_characters_long' is used when env var missing"
+      code_refs:
+        - "lib/auth/session.ts:16"
+    fix_plan:
+      approach: "Throw error if SESSION_SECRET not set in production environment"
+      files_likely_touched:
+        - "lib/auth/session.ts"
+      migrations: none
+      risks:
+        - "Deployment fails if env var not set"
+      rollback: "N/A - security fix"
+    acceptance_tests:
+      - type: unit
+        description: "Application throws on startup if NODE_ENV=production and SESSION_SECRET missing"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-004
+    title: "API key grants admin-level access regardless of creating user's role"
+    area: rbac
+    severity: P1
+    impact: "Privilege escalation - member user can create API key and gain admin access"
+    frequency: sometimes
+    confidence: high
+    evidence:
+      - type: codepath
+        ref: "lib/auth/middleware.ts:17-47"
+    repro:
+      preconditions:
+        - "User with 'member' role"
+      steps:
+        - "Member creates API key (if endpoint allows)"
+        - "Use API key for authentication"
+        - "API key grants admin-level context"
+      expected: "API key inherits creating user's role"
+      actual: "API key always has admin role"
+    suspected_root_cause:
+      summary: "verifyApiKey returns hardcoded 'admin' role instead of user's actual role"
+      code_refs:
+        - "lib/auth/middleware.ts:37-42"
+    fix_plan:
+      approach: "Store creator's role in apiKeys table and return it from verification"
+      files_likely_touched:
+        - "drizzle/schema.ts"
+        - "lib/auth/middleware.ts"
+        - "app/api/v1/api-keys/route.ts"
+      migrations:
+        - "Add 'role' column to apiKeys table"
+      risks:
+        - "Breaking change for existing API keys"
+      rollback: "Keep admin default, add feature flag"
+    acceptance_tests:
+      - type: integration
+        description: "API key created by member user only has member permissions"
+      - type: unit
+        description: "verifyApiKey returns stored role from database"
+    owner_suggestion: backend
+    estimated_effort: M
+
+  - id: BUG-005
+    title: "Password reset token not rate limited per user"
+    area: auth
+    severity: P1
+    impact: "Email flooding, token enumeration attacks"
+    frequency: always
+    confidence: high
+    evidence:
+      - type: codepath
+        ref: "app/api/v1/auth/forgot-password/route.ts"
+    repro:
+      preconditions: []
+      steps:
+        - "Request password reset 100 times for same email"
+      expected: "Limited to N requests per time period"
+      actual: "All requests create new tokens"
+    suspected_root_cause:
+      summary: "No rate limiting, no check for existing pending tokens"
+      code_refs:
+        - "app/api/v1/auth/forgot-password/route.ts"
+    fix_plan:
+      approach: "Add rate limit + invalidate old tokens before creating new one"
+      files_likely_touched:
+        - "app/api/v1/auth/forgot-password/route.ts"
+      migrations: none
+      risks: []
+      rollback: "Remove rate limit check"
+    acceptance_tests:
+      - type: integration
+        description: "Second password reset request invalidates first token"
+      - type: integration
+        description: "Max 3 password reset requests per hour per email"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-006
+    title: "Soft-deleted users can still authenticate via API key"
+    area: auth
+    severity: P1
+    impact: "Deleted users retain access to system"
+    frequency: sometimes
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "lib/auth/middleware.ts:17-47"
+    repro:
+      preconditions:
+        - "User with active API key"
+        - "User is soft-deleted (deletedAt set)"
+      steps:
+        - "Use API key to authenticate"
+      expected: "Authentication fails for deleted user"
+      actual: "Authentication succeeds - apiKey lookup doesn't check user.deletedAt"
+    suspected_root_cause:
+      summary: "verifyApiKey only checks apiKey.revokedAt, not user.deletedAt"
+      code_refs:
+        - "lib/auth/middleware.ts:27-35"
+    fix_plan:
+      approach: "Join with users table and check deletedAt is null"
+      files_likely_touched:
+        - "lib/auth/middleware.ts"
+      migrations: none
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: integration
+        description: "API key auth fails if owning user is soft-deleted"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-007
+    title: "No CSRF protection on state-changing endpoints"
+    area: security
+    severity: P1
+    impact: "Cross-site request forgery attacks"
+    frequency: sometimes
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "app/api/v1/*/route.ts"
+    repro:
+      preconditions:
+        - "User logged in with session cookie"
+      steps:
+        - "Malicious site makes POST request to /api/v1/contacts"
+        - "Browser includes session cookie"
+      expected: "Request rejected due to CSRF token mismatch"
+      actual: "Request processed (sameSite=lax provides partial protection)"
+    suspected_root_cause:
+      summary: "No CSRF token validation, relies only on sameSite=lax"
+      code_refs:
+        - "lib/auth/session.ts:19"
+    fix_plan:
+      approach: "Implement CSRF token in session, validate on POST/PATCH/DELETE"
+      files_likely_touched:
+        - "lib/auth/session.ts"
+        - "lib/auth/middleware.ts"
+        - "lib/api/client.ts"
+      migrations: none
+      risks:
+        - "Client-side changes required"
+      rollback: "Disable CSRF check"
+    acceptance_tests:
+      - type: security
+        description: "POST request without valid CSRF token returns 403"
+    owner_suggestion: backend
+    estimated_effort: M
+
+  - id: BUG-008
+    title: "Search endpoint vulnerable to ReDoS via unescaped regex"
+    area: security
+    severity: P1
+    impact: "Denial of service via crafted search queries"
+    frequency: rare
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "app/api/v1/search/route.ts"
+    repro:
+      preconditions: []
+      steps:
+        - "Send search query with regex metacharacters"
+      expected: "Query is escaped or sanitized"
+      actual: "Depends on implementation - verify SQL LIKE vs regex"
+    suspected_root_cause:
+      summary: "Search query may be used in SQL LIKE without proper escaping"
+      code_refs:
+        - "app/api/v1/search/route.ts"
+    fix_plan:
+      approach: "Escape special characters in search input"
+      files_likely_touched:
+        - "app/api/v1/search/route.ts"
+      migrations: none
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: security
+        description: "Search with '%' or '_' characters doesn't cause unexpected results"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-009
+    title: "Audit log does not capture failed authentication attempts"
+    area: security
+    severity: P2
+    impact: "No visibility into brute force attempts"
+    frequency: always
+    confidence: high
+    evidence:
+      - type: codepath
+        ref: "app/api/v1/auth/login/route.ts"
+    repro:
+      preconditions: []
+      steps:
+        - "Attempt login with wrong password"
+      expected: "Failed attempt logged to audit trail"
+      actual: "No audit entry created"
+    suspected_root_cause:
+      summary: "Audit logging only implemented for CRUD operations, not auth events"
+      code_refs:
+        - "lib/audit/logger.ts"
+        - "app/api/v1/auth/login/route.ts"
+    fix_plan:
+      approach: "Add security audit log type for auth events"
+      files_likely_touched:
+        - "lib/audit/logger.ts"
+        - "app/api/v1/auth/login/route.ts"
+        - "drizzle/schema.ts"
+      migrations:
+        - "Add 'security' to audit_action enum or create separate table"
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: integration
+        description: "Failed login creates audit entry with IP and timestamp"
+    owner_suggestion: backend
+    estimated_effort: M
+
+  - id: BUG-010
+    title: "Deal position reordering not atomic - race condition"
+    area: db
+    severity: P2
+    impact: "Duplicate positions, incorrect ordering when concurrent moves"
+    frequency: sometimes
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "app/api/v1/deals/[dealId]/move/route.ts"
+    repro:
+      preconditions:
+        - "Two users viewing same pipeline board"
+      steps:
+        - "Both users drag deals simultaneously"
+        - "Position updates interleave"
+      expected: "Atomic reordering, no duplicate positions"
+      actual: "Possible duplicate positions or skipped positions"
+    suspected_root_cause:
+      summary: "Position update not wrapped in transaction with SELECT FOR UPDATE"
+      code_refs:
+        - "app/api/v1/deals/[dealId]/move/route.ts"
+    fix_plan:
+      approach: "Use transaction with row locking for position updates"
+      files_likely_touched:
+        - "app/api/v1/deals/[dealId]/move/route.ts"
+      migrations: none
+      risks:
+        - "Potential deadlock if not careful with lock order"
+      rollback: "Revert to non-transactional"
+    acceptance_tests:
+      - type: integration
+        description: "100 concurrent deal moves result in consistent positions"
+    owner_suggestion: backend
+    estimated_effort: M
+
+  - id: BUG-011
+    title: "Import job processing not implemented - always stays 'pending'"
+    area: api
+    severity: P2
+    impact: "Import feature non-functional"
+    frequency: always
+    confidence: high
+    evidence:
+      - type: codepath
+        ref: "app/api/v1/import/route.ts"
+    repro:
+      preconditions: []
+      steps:
+        - "Upload CSV via import endpoint"
+        - "Check job status"
+      expected: "Job processes and completes"
+      actual: "Job stays in 'pending' status forever"
+    suspected_root_cause:
+      summary: "Only job record creation implemented, no background processing"
+      code_refs:
+        - "app/api/v1/import/route.ts"
+    fix_plan:
+      approach: "Implement background job processing or synchronous processing for small files"
+      files_likely_touched:
+        - "app/api/v1/import/route.ts"
+        - "lib/import/processor.ts (new)"
+      migrations: none
+      risks:
+        - "Large file processing timeout"
+      rollback: "N/A - new feature"
+    acceptance_tests:
+      - type: integration
+        description: "Import job processes CSV and creates records"
+      - type: integration
+        description: "Import job status transitions through pending→processing→completed"
+    owner_suggestion: backend
+    estimated_effort: L
+
+  - id: BUG-012
+    title: "Delete cascade may orphan related records in some cases"
+    area: db
+    severity: P2
+    impact: "Data integrity issues when deleting contacts/companies"
+    frequency: sometimes
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "drizzle/schema.ts"
+    repro:
+      preconditions:
+        - "Contact linked to deal and activity"
+      steps:
+        - "Hard delete contact (if implemented) or test cascade behavior"
+      expected: "All related records handled appropriately"
+      actual: "Verify SET NULL vs CASCADE policies are correct"
+    suspected_root_cause:
+      summary: "Mixed cascade policies - some SET NULL, some CASCADE - need verification"
+      code_refs:
+        - "drizzle/schema.ts:143-168"
+    fix_plan:
+      approach: "Audit all foreign key policies, ensure consistent behavior"
+      files_likely_touched:
+        - "drizzle/schema.ts"
+      migrations:
+        - "Alter FK constraints if needed"
+      risks:
+        - "Behavioral change for existing data"
+      rollback: "Revert migration"
+    acceptance_tests:
+      - type: integration
+        description: "Deleting contact sets null on deals.contactId"
+      - type: integration
+        description: "Deleting tenant cascades all child records"
+    owner_suggestion: backend
+    estimated_effort: M
+
+  - id: BUG-013
+    title: "No input length validation on notes/description TEXT fields"
+    area: api
+    severity: P2
+    impact: "DoS via extremely large payloads, storage abuse"
+    frequency: rare
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "validations/contact.ts"
+    repro:
+      preconditions: []
+      steps:
+        - "Create contact with 10MB notes field"
+      expected: "Request rejected for oversized content"
+      actual: "Depends on Zod schema - verify max lengths"
+    suspected_root_cause:
+      summary: "Some TEXT fields may not have max length validation in Zod schemas"
+      code_refs:
+        - "validations/deal.ts"
+        - "validations/activity.ts"
+    fix_plan:
+      approach: "Add .max() validation to all text/string fields"
+      files_likely_touched:
+        - "validations/*.ts"
+      migrations: none
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: unit
+        description: "All Zod schemas reject strings over reasonable limits"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-014
+    title: "Email uniqueness check has TOCTOU race condition"
+    area: auth
+    severity: P2
+    impact: "Duplicate email accounts possible under race"
+    frequency: rare
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "app/api/v1/auth/register/route.ts:21-27"
+    repro:
+      preconditions: []
+      steps:
+        - "Two simultaneous register requests with same email"
+        - "Both pass uniqueness check before either commits"
+      expected: "Database unique constraint prevents duplicates"
+      actual: "Unique index should catch, but verify handling"
+    suspected_root_cause:
+      summary: "Application-level check before insert, not database-level constraint"
+      code_refs:
+        - "app/api/v1/auth/register/route.ts:21-27"
+    fix_plan:
+      approach: "Catch unique constraint violation and return appropriate error"
+      files_likely_touched:
+        - "app/api/v1/auth/register/route.ts"
+      migrations: none
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: integration
+        description: "Concurrent registration with same email - one succeeds, one fails gracefully"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-015
+    title: "Dashboard layout returns null causing hydration flash"
+    area: ui
+    severity: P2
+    impact: "Brief flash of nothing before redirect on unauthenticated access"
+    frequency: always
+    confidence: high
+    evidence:
+      - type: codepath
+        ref: "app/(dashboard)/layout.tsx:31-33"
+    repro:
+      preconditions:
+        - "User not authenticated"
+      steps:
+        - "Navigate to /dashboard directly"
+      expected: "Immediate redirect or loading state"
+      actual: "Brief null render before redirect"
+    suspected_root_cause:
+      summary: "return null while redirect happens causes hydration mismatch"
+      code_refs:
+        - "app/(dashboard)/layout.tsx:31-33"
+    fix_plan:
+      approach: "Return loading spinner instead of null, or use server-side redirect"
+      files_likely_touched:
+        - "app/(dashboard)/layout.tsx"
+      migrations: none
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: e2e
+        description: "Unauthenticated dashboard access shows loading then redirects"
+    owner_suggestion: frontend
+    estimated_effort: S
+
+  - id: BUG-016
+    title: "Pipeline stages can be deleted even with deals attached"
+    area: db
+    severity: P2
+    impact: "Orphaned deals if stage deleted while deals exist"
+    frequency: sometimes
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "drizzle/schema.ts:158"
+    repro:
+      preconditions:
+        - "Stage with 5 deals"
+      steps:
+        - "Delete the stage"
+      expected: "Deletion blocked or deals moved"
+      actual: "Depends on FK policy - verify RESTRICT is working"
+    suspected_root_cause:
+      summary: "FK uses restrict but need to verify API handles the error gracefully"
+      code_refs:
+        - "drizzle/schema.ts:158"
+        - "app/api/v1/pipeline/stages/[stageId]/route.ts"
+    fix_plan:
+      approach: "Check for existing deals before delete, return user-friendly error"
+      files_likely_touched:
+        - "app/api/v1/pipeline/stages/[stageId]/route.ts"
+      migrations: none
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: integration
+        description: "Deleting stage with deals returns 409 Conflict"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-017
+    title: "Audit logger swallows errors silently"
+    area: observability
+    severity: P2
+    impact: "Audit trail gaps go unnoticed"
+    frequency: sometimes
+    confidence: high
+    evidence:
+      - type: codepath
+        ref: "lib/audit/logger.ts:29"
+    repro:
+      preconditions:
+        - "Database connection issue"
+      steps:
+        - "Perform audited action"
+        - "Audit log insert fails"
+      expected: "Error logged to monitoring system"
+      actual: "Only console.error, no alerting"
+    suspected_root_cause:
+      summary: "Audit is fire-and-forget with only console logging on failure"
+      code_refs:
+        - "lib/audit/logger.ts:25-30"
+    fix_plan:
+      approach: "Add structured logging, consider making audit critical for some operations"
+      files_likely_touched:
+        - "lib/audit/logger.ts"
+      migrations: none
+      risks:
+        - "If audit becomes blocking, failures affect main operations"
+      rollback: "Keep non-blocking"
+    acceptance_tests:
+      - type: integration
+        description: "Audit failures are logged with structured error format"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-018
+    title: "No pagination limit enforcement on server side"
+    area: api
+    severity: P2
+    impact: "Memory exhaustion with pageSize=10000"
+    frequency: rare
+    confidence: high
+    evidence:
+      - type: codepath
+        ref: "validations/contact.ts"
+    repro:
+      preconditions: []
+      steps:
+        - "Request /api/v1/contacts?pageSize=10000"
+      expected: "pageSize capped at reasonable limit"
+      actual: "Zod validates max(100) but verify all endpoints"
+    suspected_root_cause:
+      summary: "Need to verify all query schemas have pageSize max"
+      code_refs:
+        - "validations/*.ts"
+    fix_plan:
+      approach: "Audit all query schemas for pageSize limits"
+      files_likely_touched:
+        - "validations/*.ts"
+      migrations: none
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: unit
+        description: "All query schemas reject pageSize > 100"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-019
+    title: "Company domain not validated for format"
+    area: api
+    severity: P3
+    impact: "Invalid domain data stored"
+    frequency: sometimes
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "validations/company.ts"
+    repro:
+      preconditions: []
+      steps:
+        - "Create company with domain='not a domain'"
+      expected: "Validation error"
+      actual: "Accepted (just max length checked)"
+    suspected_root_cause:
+      summary: "Domain field only has max(255), no format validation"
+      code_refs:
+        - "validations/company.ts"
+    fix_plan:
+      approach: "Add domain format validation (optional, but if provided must be valid)"
+      files_likely_touched:
+        - "validations/company.ts"
+      migrations: none
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: unit
+        description: "Company domain validated as hostname format"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-020
+    title: "Export endpoint returns raw Response, not typed"
+    area: api
+    severity: P3
+    impact: "No error handling in API client for export"
+    frequency: always
+    confidence: high
+    evidence:
+      - type: codepath
+        ref: "lib/api/client.ts:187-188"
+    repro:
+      preconditions: []
+      steps:
+        - "Call api.export()"
+      expected: "Typed response with error handling"
+      actual: "Raw fetch Response returned"
+    suspected_root_cause:
+      summary: "Export uses raw fetch instead of apiFetch wrapper for streaming response"
+      code_refs:
+        - "lib/api/client.ts:187-188"
+    fix_plan:
+      approach: "Handle error cases before returning blob, or document the pattern"
+      files_likely_touched:
+        - "lib/api/client.ts"
+      migrations: none
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: unit
+        description: "Export client handles HTTP errors gracefully"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-021
+    title: "Missing index on auditLogs.action column"
+    area: db
+    severity: P3
+    impact: "Slow audit log queries when filtering by action"
+    frequency: sometimes
+    confidence: high
+    evidence:
+      - type: codepath
+        ref: "drizzle/schema.ts:216-232"
+    repro:
+      preconditions:
+        - "Large audit log table"
+      steps:
+        - "Query audit logs filtered by action"
+      expected: "Index-assisted scan"
+      actual: "Full table scan (verify with EXPLAIN)"
+    suspected_root_cause:
+      summary: "No index defined for action column"
+      code_refs:
+        - "drizzle/schema.ts:232"
+    fix_plan:
+      approach: "Add composite index on (tenantId, action, createdAt)"
+      files_likely_touched:
+        - "drizzle/schema.ts"
+      migrations:
+        - "CREATE INDEX idx_audit_logs_action"
+      risks: []
+      rollback: "DROP INDEX"
+    acceptance_tests:
+      - type: integration
+        description: "Audit log query by action uses index"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-022
+    title: "User invitation creates user without password"
+    area: auth
+    severity: P2
+    impact: "Invited users cannot log in until they set password"
+    frequency: always
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "app/api/v1/organization/users/route.ts"
+    repro:
+      preconditions: []
+      steps:
+        - "Admin invites new user"
+        - "User tries to log in"
+      expected: "User receives invite email with password setup link"
+      actual: "User created with no password, no email sent"
+    suspected_root_cause:
+      summary: "Invite creates user record but email/password flow not implemented"
+      code_refs:
+        - "app/api/v1/organization/users/route.ts"
+    fix_plan:
+      approach: "Generate invite token, send email, require password setup"
+      files_likely_touched:
+        - "app/api/v1/organization/users/route.ts"
+        - "drizzle/schema.ts (add inviteToken)"
+        - "app/api/v1/auth/accept-invite/route.ts (new)"
+      migrations:
+        - "Add invite token columns"
+      risks:
+        - "Email delivery dependency"
+      rollback: "N/A"
+    acceptance_tests:
+      - type: integration
+        description: "Invited user receives email and can set password"
+    owner_suggestion: backend
+    estimated_effort: L
+
+  - id: BUG-023
+    title: "Contact tags junction table has no unique constraint"
+    area: db
+    severity: P3
+    impact: "Duplicate tag assignments possible"
+    frequency: rare
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "drizzle/schema.ts:116-122"
+    repro:
+      preconditions: []
+      steps:
+        - "Assign same tag to contact twice via concurrent requests"
+      expected: "Unique constraint prevents duplicate"
+      actual: "Verify if (contactId, tagId) has unique constraint"
+    suspected_root_cause:
+      summary: "contactTags table may lack unique constraint on composite key"
+      code_refs:
+        - "drizzle/schema.ts:116-122"
+    fix_plan:
+      approach: "Add unique constraint on (contactId, tagId)"
+      files_likely_touched:
+        - "drizzle/schema.ts"
+      migrations:
+        - "ALTER TABLE add unique constraint"
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: integration
+        description: "Duplicate tag assignment returns error or no-ops"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-024
+    title: "useDebounce hook may cause stale closures"
+    area: ui
+    severity: P3
+    impact: "Search results may not reflect latest input"
+    frequency: rare
+    confidence: low
+    evidence:
+      - type: codepath
+        ref: "hooks/use-debounce.ts"
+    repro:
+      preconditions: []
+      steps:
+        - "Rapid typing in search box"
+        - "Check debounced value consistency"
+      expected: "Latest value after debounce period"
+      actual: "Verify implementation"
+    suspected_root_cause:
+      summary: "Need to verify useDebounce implementation handles refs correctly"
+      code_refs:
+        - "hooks/use-debounce.ts"
+    fix_plan:
+      approach: "Verify or replace with established library"
+      files_likely_touched:
+        - "hooks/use-debounce.ts"
+      migrations: none
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: unit
+        description: "useDebounce returns latest value after specified delay"
+    owner_suggestion: frontend
+    estimated_effort: S
+
+  - id: BUG-025
+    title: "No content-type validation on import file upload"
+    area: security
+    severity: P2
+    impact: "Malicious file upload, server-side attacks"
+    frequency: rare
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "app/api/v1/import/route.ts"
+    repro:
+      preconditions: []
+      steps:
+        - "Upload file with .csv extension but malicious content"
+      expected: "File content validated"
+      actual: "Verify content-type and file content validation"
+    suspected_root_cause:
+      summary: "Import endpoint may only check extension, not content"
+      code_refs:
+        - "app/api/v1/import/route.ts"
+    fix_plan:
+      approach: "Validate file content-type and parse safely"
+      files_likely_touched:
+        - "app/api/v1/import/route.ts"
+      migrations: none
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: security
+        description: "Non-CSV file upload rejected"
+      - type: security
+        description: "CSV with embedded scripts sanitized"
+    owner_suggestion: backend
+    estimated_effort: M
+
+  - id: BUG-026
+    title: "Owner cannot be demoted or removed"
+    area: rbac
+    severity: P3
+    impact: "Stuck owner accounts"
+    frequency: rare
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "app/api/v1/organization/users/[userId]/route.ts"
+    repro:
+      preconditions:
+        - "Single owner in organization"
+      steps:
+        - "Try to demote or remove owner"
+      expected: "Clear error message about owner protection"
+      actual: "Verify handling"
+    suspected_root_cause:
+      summary: "Need to verify owner demotion/removal prevention"
+      code_refs:
+        - "app/api/v1/organization/users/[userId]/route.ts"
+    fix_plan:
+      approach: "Ensure at least one owner always exists"
+      files_likely_touched:
+        - "app/api/v1/organization/users/[userId]/route.ts"
+      migrations: none
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: integration
+        description: "Cannot demote sole owner"
+      - type: integration
+        description: "Cannot remove sole owner"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-027
+    title: "API responses leak internal error details"
+    area: security
+    severity: P2
+    impact: "Information disclosure via error messages"
+    frequency: sometimes
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "lib/api/response.ts"
+    repro:
+      preconditions: []
+      steps:
+        - "Trigger database error"
+        - "Check error response"
+      expected: "Generic error message"
+      actual: "Verify no stack traces or SQL in response"
+    suspected_root_cause:
+      summary: "Error handling may expose internal details"
+      code_refs:
+        - "lib/api/response.ts"
+    fix_plan:
+      approach: "Sanitize all error responses, log full details server-side only"
+      files_likely_touched:
+        - "lib/api/response.ts"
+        - "app/api/v1/*/route.ts"
+      migrations: none
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: security
+        description: "Database errors return generic message"
+      - type: security
+        description: "No stack traces in production responses"
+    owner_suggestion: backend
+    estimated_effort: M
+
+  - id: BUG-028
+    title: "No request body size limit"
+    area: security
+    severity: P2
+    impact: "DoS via large request bodies"
+    frequency: rare
+    confidence: medium
+    evidence:
+      - type: codepath
+        ref: "app/api/v1/*/route.ts"
+    repro:
+      preconditions: []
+      steps:
+        - "Send POST with 100MB body"
+      expected: "Request rejected"
+      actual: "Verify Next.js body limit or custom limit"
+    suspected_root_cause:
+      summary: "No explicit body size limit configured"
+      code_refs:
+        - "next.config.ts"
+    fix_plan:
+      approach: "Configure body size limit in Next.js config"
+      files_likely_touched:
+        - "next.config.ts"
+      migrations: none
+      risks: []
+      rollback: "Remove limit"
+    acceptance_tests:
+      - type: security
+        description: "Request bodies over 1MB rejected"
+    owner_suggestion: backend
+    estimated_effort: S
+
+  - id: BUG-029
+    title: "Missing security headers"
+    area: security
+    severity: P2
+    impact: "Various browser-based attacks"
+    frequency: always
+    confidence: high
+    evidence:
+      - type: codepath
+        ref: "next.config.ts"
+    repro:
+      preconditions: []
+      steps:
+        - "Check response headers"
+      expected: "X-Content-Type-Options, X-Frame-Options, CSP present"
+      actual: "Verify security headers"
+    suspected_root_cause:
+      summary: "No security headers configured"
+      code_refs:
+        - "next.config.ts"
+    fix_plan:
+      approach: "Add security headers via Next.js config"
+      files_likely_touched:
+        - "next.config.ts"
+      migrations: none
+      risks: []
+      rollback: "Remove headers"
+    acceptance_tests:
+      - type: security
+        description: "All responses include security headers"
+    owner_suggestion: devops
+    estimated_effort: S
+
+  - id: BUG-030
+    title: "Database connection not properly cleaned up"
+    area: reliability
+    severity: P2
+    impact: "Connection pool exhaustion under load"
+    frequency: rare
+    confidence: low
+    evidence:
+      - type: codepath
+        ref: "lib/db/index.ts"
+    repro:
+      preconditions:
+        - "High traffic load"
+      steps:
+        - "Make many concurrent requests"
+        - "Monitor connection count"
+      expected: "Connections properly pooled and released"
+      actual: "Verify postgres-js pooling behavior"
+    suspected_root_cause:
+      summary: "postgres-js with prepare:false may not pool optimally"
+      code_refs:
+        - "lib/db/index.ts:9"
+    fix_plan:
+      approach: "Review postgres-js connection settings, add health checks"
+      files_likely_touched:
+        - "lib/db/index.ts"
+      migrations: none
+      risks: []
+      rollback: "N/A"
+    acceptance_tests:
+      - type: load
+        description: "1000 concurrent requests don't exhaust connection pool"
+    owner_suggestion: backend
+    estimated_effort: M

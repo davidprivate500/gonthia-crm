@@ -4,6 +4,7 @@ import { requireAuth, requireWriteAccess } from '@/lib/auth/middleware';
 import { createTagSchema, tagQuerySchema } from '@/validations/tag';
 import { successResponse, validationError, conflictError, internalError, formatZodErrors } from '@/lib/api/response';
 import { eq, and, isNull, ilike } from 'drizzle-orm';
+import { toSearchPattern } from '@/lib/search';
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,7 +22,8 @@ export async function GET(request: NextRequest) {
     ];
 
     if (query.search) {
-      conditions.push(ilike(tags.name, `%${query.search}%`));
+      // BUG-008 FIX: Escape SQL LIKE wildcards in search term
+      conditions.push(ilike(tags.name, toSearchPattern(query.search)));
     }
 
     const tagList = await db.query.tags.findMany({

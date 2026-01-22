@@ -5,15 +5,37 @@ export type UserRole = 'owner' | 'admin' | 'member' | 'readonly';
 
 export interface SessionData {
   userId: string;
-  tenantId: string;
+  tenantId: string | null; // null for master admins
   role: UserRole;
   email: string;
   firstName?: string;
   lastName?: string;
+  isMasterAdmin?: boolean; // Platform-level admin with cross-tenant access
+}
+
+// BUG-003 FIX: Validate SESSION_SECRET at startup
+function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+
+  if (!secret) {
+    throw new Error(
+      'SESSION_SECRET environment variable is required. ' +
+      'Generate a secure secret with: openssl rand -hex 32'
+    );
+  }
+
+  if (secret.length < 32) {
+    throw new Error(
+      'SESSION_SECRET must be at least 32 characters long. ' +
+      'Current length: ' + secret.length
+    );
+  }
+
+  return secret;
 }
 
 export const sessionOptions: SessionOptions = {
-  password: process.env.SESSION_SECRET || 'complex_password_at_least_32_characters_long',
+  password: getSessionSecret(),
   cookieName: 'gonthia-session',
   cookieOptions: {
     secure: process.env.NODE_ENV === 'production',
@@ -44,6 +66,7 @@ export async function setSession(data: SessionData): Promise<void> {
   session.email = data.email;
   session.firstName = data.firstName;
   session.lastName = data.lastName;
+  session.isMasterAdmin = data.isMasterAdmin;
 
   await session.save();
 }
@@ -103,4 +126,9 @@ export function canManageApiKeys(role: UserRole): boolean {
 
 export function canExportData(role: UserRole): boolean {
   return role === 'owner';
+}
+
+// Master admin permissions
+export function isMasterAdminSession(session: SessionData | null): boolean {
+  return session?.isMasterAdmin === true;
 }

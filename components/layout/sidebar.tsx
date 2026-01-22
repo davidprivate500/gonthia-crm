@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
+import { useCommandPaletteStore } from '@/stores/command-palette';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -28,6 +29,7 @@ const navigation = [
 ];
 
 const adminNavigation = [
+  { name: 'Pipeline', href: '/settings/pipeline', icon: Kanban },
   { name: 'Team', href: '/settings/team', icon: Users },
   { name: 'API Keys', href: '/settings/api-keys', icon: Key },
   { name: 'Audit Log', href: '/settings/audit-log', icon: Shield },
@@ -37,6 +39,7 @@ const adminNavigation = [
 export function Sidebar() {
   const pathname = usePathname();
   const { user, organization, logout } = useAuth();
+  const openCommandPalette = useCommandPaletteStore((state) => state.open);
 
   const isAdmin = user?.role === 'owner' || user?.role === 'admin';
 
@@ -57,16 +60,16 @@ export function Sidebar() {
 
       {/* Search */}
       <div className="px-4 py-3">
-        <Link
-          href="/search"
-          className="flex items-center gap-2 px-3 py-2 text-sm text-gray-400 bg-gray-800 rounded-md hover:bg-gray-700 transition-colors"
+        <button
+          onClick={openCommandPalette}
+          className="flex items-center gap-2 px-3 py-2 text-sm text-gray-400 bg-gray-800 rounded-md hover:bg-gray-700 transition-colors w-full"
         >
           <Search className="h-4 w-4" />
           <span>Search...</span>
           <kbd className="ml-auto text-xs bg-gray-700 px-1.5 py-0.5 rounded">
             ⌘K
           </kbd>
-        </Link>
+        </button>
       </div>
 
       {/* Main Navigation */}

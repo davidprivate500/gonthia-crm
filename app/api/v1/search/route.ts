@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth/middleware';
 import { globalSearchSchema } from '@/validations/search';
 import { successResponse, validationError, internalError, formatZodErrors } from '@/lib/api/response';
 import { eq, and, isNull, ilike, or, sql } from 'drizzle-orm';
+import { toSearchPattern } from '@/lib/search';
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,7 +22,8 @@ export async function GET(request: NextRequest) {
 
     const { q, types, limit } = result.data;
     const searchTypes = types ? types.split(',') : ['contacts', 'companies', 'deals'];
-    const searchTerm = `%${q}%`;
+    // BUG-008 FIX: Escape SQL LIKE wildcards in search term
+    const searchTerm = toSearchPattern(q);
 
     const results: {
       contacts?: Array<{ id: string; type: string; displayName: string; email?: string | null; status?: string }>;

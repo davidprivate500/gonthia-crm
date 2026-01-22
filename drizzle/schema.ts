@@ -1,12 +1,19 @@
-import { pgTable, uuid, varchar, timestamp, text, integer, boolean, decimal, index, pgEnum, json, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, text, integer, boolean, decimal, index, pgEnum, json, type AnyPgColumn, uniqueIndex, serial } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // Enums
 export const userRoleEnum = pgEnum('user_role', ['owner', 'admin', 'member', 'readonly']);
 export const contactStatusEnum = pgEnum('contact_status', ['lead', 'prospect', 'customer', 'churned', 'other']);
 export const activityTypeEnum = pgEnum('activity_type', ['note', 'call', 'email', 'meeting', 'task']);
-export const auditActionEnum = pgEnum('audit_action', ['create', 'update', 'delete']);
+// BUG-009 FIX: Extended audit action enum to include auth events
+export const auditActionEnum = pgEnum('audit_action', [
+  'create', 'update', 'delete',
+  'login_success', 'login_failed', 'logout',
+  'password_reset_request', 'password_reset_success'
+]);
 export const importStatusEnum = pgEnum('import_status', ['pending', 'processing', 'completed', 'failed']);
+// Invoice status enum
+export const invoiceStatusEnum = pgEnum('invoice_status', ['draft', 'issued', 'paid', 'void', 'overdue']);
 
 // Tenants table
 export const tenants = pgTable('tenants', {
@@ -21,8 +28,11 @@ export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
   email: varchar('email', { length: 255 }).notNull().unique(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
-  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  // tenantId is nullable for master admins (platform-level users)
+  tenantId: uuid('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   role: userRoleEnum('role').notNull().default('member'),
+  // Master admin flag - platform-level admin with cross-tenant access
+  isMasterAdmin: boolean('is_master_admin').notNull().default(false),
   firstName: varchar('first_name', { length: 100 }),
   lastName: varchar('last_name', { length: 100 }),
   invitedById: uuid('invited_by_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
@@ -34,6 +44,7 @@ export const users = pgTable('users', {
   index('idx_users_tenant_id').on(table.tenantId),
   index('idx_users_email').on(table.email),
   index('idx_users_deleted_at').on(table.deletedAt),
+  index('idx_users_is_master_admin').on(table.isMasterAdmin),
 ]);
 
 // Password reset tokens
@@ -229,6 +240,8 @@ export const auditLogs = pgTable('audit_logs', {
   index('idx_audit_logs_user_id').on(table.userId),
   index('idx_audit_logs_entity').on(table.entityType, table.entityId),
   index('idx_audit_logs_created_at').on(table.createdAt),
+  // BUG-021 FIX: Add index on action column for filtering by action type
+  index('idx_audit_logs_action').on(table.action),
 ]);
 
 // Import jobs table
@@ -252,8 +265,144 @@ export const importJobs = pgTable('import_jobs', {
   index('idx_import_jobs_status').on(table.status),
 ]);
 
+// ============================================================================
+// PLATFORM & BILLING TABLES
+// ============================================================================
+
+// Platform settings table (singleton) - stores issuer/platform billing info
+export const platformSettings = pgTable('platform_settings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  // Issuer (platform) company details
+  companyName: varchar('company_name', { length: 255 }).notNull(),
+  legalName: varchar('legal_name', { length: 255 }),
+  registrationId: varchar('registration_id', { length: 100 }), // Company reg number
+  vatId: varchar('vat_id', { length: 50 }), // VAT/Tax ID
+  address: text('address'),
+  city: varchar('city', { length: 100 }),
+  state: varchar('state', { length: 100 }),
+  postalCode: varchar('postal_code', { length: 20 }),
+  country: varchar('country', { length: 100 }),
+  email: varchar('email', { length: 255 }),
+  phone: varchar('phone', { length: 50 }),
+  website: varchar('website', { length: 500 }),
+  logoUrl: varchar('logo_url', { length: 500 }),
+  // Bank/payment details
+  bankName: varchar('bank_name', { length: 255 }),
+  bankAccountName: varchar('bank_account_name', { length: 255 }),
+  bankAccountNumber: varchar('bank_account_number', { length: 100 }),
+  bankRoutingNumber: varchar('bank_routing_number', { length: 50 }),
+  bankSwiftCode: varchar('bank_swift_code', { length: 20 }),
+  bankIban: varchar('bank_iban', { length: 50 }),
+  // Crypto payment (optional)
+  cryptoWalletAddress: varchar('crypto_wallet_address', { length: 255 }),
+  cryptoNetwork: varchar('crypto_network', { length: 50 }),
+  // Additional payment instructions
+  paymentInstructions: text('payment_instructions'),
+  // Invoice settings
+  invoicePrefix: varchar('invoice_prefix', { length: 10 }).notNull().default('INV'),
+  invoiceFooterText: text('invoice_footer_text'),
+  defaultCurrency: varchar('default_currency', { length: 3 }).notNull().default('USD'),
+  defaultPaymentTermsDays: integer('default_payment_terms_days').notNull().default(30),
+  // Timestamps
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Tenant billing info - billing details for each tenant (client)
+export const tenantBillingInfo = pgTable('tenant_billing_info', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }).unique(),
+  // Client billing details
+  legalName: varchar('legal_name', { length: 255 }),
+  registrationId: varchar('registration_id', { length: 100 }), // Company reg number
+  vatId: varchar('vat_id', { length: 50 }), // VAT/Tax ID
+  billingAddress: text('billing_address'),
+  billingCity: varchar('billing_city', { length: 100 }),
+  billingState: varchar('billing_state', { length: 100 }),
+  billingPostalCode: varchar('billing_postal_code', { length: 20 }),
+  billingCountry: varchar('billing_country', { length: 100 }),
+  billingEmail: varchar('billing_email', { length: 255 }),
+  billingPhone: varchar('billing_phone', { length: 50 }),
+  // Timestamps
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_tenant_billing_info_tenant_id').on(table.tenantId),
+]);
+
+// Invoice number sequence - for generating unique invoice numbers
+export const invoiceNumberSequence = pgTable('invoice_number_sequence', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  year: integer('year').notNull(),
+  lastNumber: integer('last_number').notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('idx_invoice_number_sequence_year').on(table.year),
+]);
+
+// Invoices table
+export const invoices = pgTable('invoices', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  // Invoice number (e.g., INV-2024-000123)
+  invoiceNumber: varchar('invoice_number', { length: 50 }).notNull().unique(),
+  // Tenant (client) this invoice is for
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'restrict' }),
+  // Status tracking
+  status: invoiceStatusEnum('status').notNull().default('draft'),
+  // Dates
+  issueDate: timestamp('issue_date', { withTimezone: true }),
+  dueDate: timestamp('due_date', { withTimezone: true }),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+  voidedAt: timestamp('voided_at', { withTimezone: true }),
+  // Currency and amounts (calculated server-side)
+  currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+  subtotal: decimal('subtotal', { precision: 15, scale: 2 }).notNull().default('0'),
+  taxRate: decimal('tax_rate', { precision: 5, scale: 2 }), // e.g., 20.00 for 20%
+  taxAmount: decimal('tax_amount', { precision: 15, scale: 2 }).notNull().default('0'),
+  total: decimal('total', { precision: 15, scale: 2 }).notNull().default('0'),
+  // Snapshot of issuer details at time of invoice creation
+  issuerSnapshot: json('issuer_snapshot'),
+  // Snapshot of client details at time of invoice creation
+  clientSnapshot: json('client_snapshot'),
+  // Notes visible on invoice
+  notes: text('notes'),
+  // Internal notes (not visible on invoice)
+  internalNotes: text('internal_notes'),
+  // Audit
+  createdById: uuid('created_by_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  issuedById: uuid('issued_by_id').references(() => users.id, { onDelete: 'set null' }),
+  // Timestamps
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_invoices_tenant_id').on(table.tenantId),
+  index('idx_invoices_status').on(table.status),
+  index('idx_invoices_issue_date').on(table.issueDate),
+  index('idx_invoices_due_date').on(table.dueDate),
+  index('idx_invoices_created_by_id').on(table.createdById),
+]);
+
+// Invoice line items
+export const invoiceLineItems = pgTable('invoice_line_items', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  invoiceId: uuid('invoice_id').notNull().references(() => invoices.id, { onDelete: 'cascade' }),
+  // Line item details
+  description: text('description').notNull(),
+  quantity: decimal('quantity', { precision: 10, scale: 2 }).notNull().default('1'),
+  unitPrice: decimal('unit_price', { precision: 15, scale: 2 }).notNull(),
+  amount: decimal('amount', { precision: 15, scale: 2 }).notNull(), // quantity * unitPrice
+  // Position for ordering
+  position: integer('position').notNull().default(0),
+  // Timestamps
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_invoice_line_items_invoice_id').on(table.invoiceId),
+  index('idx_invoice_line_items_position').on(table.invoiceId, table.position),
+]);
+
 // Relations
-export const tenantsRelations = relations(tenants, ({ many }) => ({
+export const tenantsRelations = relations(tenants, ({ one, many }) => ({
   users: many(users),
   contacts: many(contacts),
   companies: many(companies),
@@ -264,6 +413,8 @@ export const tenantsRelations = relations(tenants, ({ many }) => ({
   apiKeys: many(apiKeys),
   auditLogs: many(auditLogs),
   importJobs: many(importJobs),
+  invoices: many(invoices),
+  billingInfo: one(tenantBillingInfo),
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -340,6 +491,21 @@ export const importJobsRelations = relations(importJobs, ({ one }) => ({
   createdBy: one(users, { fields: [importJobs.createdById], references: [users.id] }),
 }));
 
+export const tenantBillingInfoRelations = relations(tenantBillingInfo, ({ one }) => ({
+  tenant: one(tenants, { fields: [tenantBillingInfo.tenantId], references: [tenants.id] }),
+}));
+
+export const invoicesRelations = relations(invoices, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [invoices.tenantId], references: [tenants.id] }),
+  createdBy: one(users, { fields: [invoices.createdById], references: [users.id] }),
+  issuedBy: one(users, { fields: [invoices.issuedById], references: [users.id] }),
+  lineItems: many(invoiceLineItems),
+}));
+
+export const invoiceLineItemsRelations = relations(invoiceLineItems, ({ one }) => ({
+  invoice: one(invoices, { fields: [invoiceLineItems.invoiceId], references: [invoices.id] }),
+}));
+
 // Type exports
 export type Tenant = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;
@@ -363,3 +529,12 @@ export type AuditLog = typeof auditLogs.$inferSelect;
 export type NewAuditLog = typeof auditLogs.$inferInsert;
 export type ImportJob = typeof importJobs.$inferSelect;
 export type NewImportJob = typeof importJobs.$inferInsert;
+export type PlatformSettings = typeof platformSettings.$inferSelect;
+export type NewPlatformSettings = typeof platformSettings.$inferInsert;
+export type TenantBillingInfo = typeof tenantBillingInfo.$inferSelect;
+export type NewTenantBillingInfo = typeof tenantBillingInfo.$inferInsert;
+export type Invoice = typeof invoices.$inferSelect;
+export type NewInvoice = typeof invoices.$inferInsert;
+export type InvoiceLineItem = typeof invoiceLineItems.$inferSelect;
+export type NewInvoiceLineItem = typeof invoiceLineItems.$inferInsert;
+export type InvoiceStatus = 'draft' | 'issued' | 'paid' | 'void' | 'overdue';

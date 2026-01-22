@@ -4,6 +4,7 @@ import { requireAuth, requireWriteAccess } from '@/lib/auth/middleware';
 import { createContactSchema, contactQuerySchema } from '@/validations/contact';
 import { successResponse, validationError, internalError, formatZodErrors, paginatedResponse } from '@/lib/api/response';
 import { eq, and, isNull, ilike, or, count } from 'drizzle-orm';
+import { toSearchPattern } from '@/lib/search';
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,11 +25,13 @@ export async function GET(request: NextRequest) {
     ];
 
     if (search) {
+      // BUG-008 FIX: Escape SQL LIKE wildcards in search term
+      const searchPattern = toSearchPattern(search);
       conditions.push(
         or(
-          ilike(contacts.firstName, `%${search}%`),
-          ilike(contacts.lastName, `%${search}%`),
-          ilike(contacts.email, `%${search}%`)
+          ilike(contacts.firstName, searchPattern),
+          ilike(contacts.lastName, searchPattern),
+          ilike(contacts.email, searchPattern)
         )!
       );
     }

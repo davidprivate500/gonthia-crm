@@ -20,12 +20,13 @@ export const moveDealSchema = z.object({
   position: z.coerce.number().int().nonnegative().optional(),
 });
 
+// BUG-013 FIX: Added max length to search to prevent abuse
 export const dealQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(50),
   sortBy: z.enum(['title', 'value', 'expectedCloseDate', 'createdAt', 'updatedAt']).default('createdAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
-  search: z.string().optional(),
+  search: z.string().max(200).optional(),
   stageId: z.string().uuid().optional(),
   ownerId: z.string().uuid().optional(),
   contactId: z.string().uuid().optional(),

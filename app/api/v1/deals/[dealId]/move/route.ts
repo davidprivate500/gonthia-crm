@@ -26,7 +26,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { stageId, position } = result.data;
 
-    // Verify deal exists
+    // Verify deal exists (outside transaction for early fail)
     const existing = await db.query.deals.findFirst({
       where: and(
         eq(deals.id, dealId),
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return notFoundError('Deal not found');
     }
 
-    // Verify stage exists
+    // Verify stage exists (outside transaction for early fail)
     const stage = await db.query.pipelineStages.findFirst({
       where: and(
         eq(pipelineStages.id, stageId),
@@ -52,43 +52,46 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return notFoundError('Pipeline stage not found');
     }
 
-    // Calculate new position
-    let newPosition = position;
-    if (newPosition === undefined) {
-      // Add to end of stage
-      const lastDeal = await db.query.deals.findFirst({
-        where: and(
-          eq(deals.stageId, stageId),
-          isNull(deals.deletedAt)
-        ),
-        orderBy: (deals, { desc }) => [desc(deals.position)],
-      });
-      newPosition = (lastDeal?.position ?? -1) + 1;
-    } else {
-      // Shift other deals in target stage
-      await db.update(deals)
+    // BUG-010 FIX: Wrap position calculation, shifting, and update in transaction
+    await db.transaction(async (tx) => {
+      // Calculate new position within transaction
+      let newPosition = position;
+      if (newPosition === undefined) {
+        // Add to end of stage
+        const lastDeal = await tx.query.deals.findFirst({
+          where: and(
+            eq(deals.stageId, stageId),
+            isNull(deals.deletedAt)
+          ),
+          orderBy: (deals, { desc }) => [desc(deals.position)],
+        });
+        newPosition = (lastDeal?.position ?? -1) + 1;
+      } else {
+        // Shift other deals in target stage
+        await tx.update(deals)
+          .set({
+            position: sql`${deals.position} + 1`,
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(deals.stageId, stageId),
+            gte(deals.position, newPosition),
+            ne(deals.id, dealId),
+            isNull(deals.deletedAt)
+          ));
+      }
+
+      // Update deal position
+      await tx.update(deals)
         .set({
-          position: sql`${deals.position} + 1`,
+          stageId,
+          position: newPosition,
           updatedAt: new Date(),
         })
-        .where(and(
-          eq(deals.stageId, stageId),
-          gte(deals.position, newPosition),
-          ne(deals.id, dealId),
-          isNull(deals.deletedAt)
-        ));
-    }
+        .where(eq(deals.id, dealId));
+    });
 
-    // Update deal
-    await db.update(deals)
-      .set({
-        stageId,
-        position: newPosition,
-        updatedAt: new Date(),
-      })
-      .where(eq(deals.id, dealId));
-
-    // Fetch complete deal
+    // Fetch complete deal (outside transaction)
     const completeDeal = await db.query.deals.findFirst({
       where: eq(deals.id, dealId),
       with: {

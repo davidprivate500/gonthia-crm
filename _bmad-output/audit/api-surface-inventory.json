@@ -1,0 +1,423 @@
+{
+  "version": "v1",
+  "baseUrl": "/api/v1",
+  "totalEndpoints": 32,
+  "endpoints": [
+    {
+      "path": "/auth/register",
+      "methods": ["POST"],
+      "file": "app/api/v1/auth/register/route.ts",
+      "auth": "none",
+      "rateLimit": "none",
+      "validation": "registerSchema",
+      "tenantScoped": false,
+      "description": "Create new tenant and owner user"
+    },
+    {
+      "path": "/auth/login",
+      "methods": ["POST"],
+      "file": "app/api/v1/auth/login/route.ts",
+      "auth": "none",
+      "rateLimit": "none",
+      "validation": "loginSchema",
+      "tenantScoped": false,
+      "description": "Authenticate user and create session"
+    },
+    {
+      "path": "/auth/logout",
+      "methods": ["POST"],
+      "file": "app/api/v1/auth/logout/route.ts",
+      "auth": "session",
+      "rateLimit": "none",
+      "validation": "none",
+      "tenantScoped": false,
+      "description": "Destroy user session"
+    },
+    {
+      "path": "/auth/me",
+      "methods": ["GET"],
+      "file": "app/api/v1/auth/me/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "none",
+      "tenantScoped": true,
+      "description": "Get current user and organization"
+    },
+    {
+      "path": "/auth/forgot-password",
+      "methods": ["POST"],
+      "file": "app/api/v1/auth/forgot-password/route.ts",
+      "auth": "none",
+      "rateLimit": "none",
+      "validation": "forgotPasswordSchema",
+      "tenantScoped": false,
+      "description": "Generate password reset token"
+    },
+    {
+      "path": "/auth/reset-password",
+      "methods": ["POST"],
+      "file": "app/api/v1/auth/reset-password/route.ts",
+      "auth": "none",
+      "rateLimit": "none",
+      "validation": "resetPasswordSchema",
+      "tenantScoped": false,
+      "description": "Reset password using token"
+    },
+    {
+      "path": "/organization",
+      "methods": ["GET", "PATCH"],
+      "file": "app/api/v1/organization/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "updateOrganizationSchema (PATCH)",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "any",
+        "PATCH": "owner"
+      },
+      "description": "Get/update organization details"
+    },
+    {
+      "path": "/organization/users",
+      "methods": ["GET", "POST"],
+      "file": "app/api/v1/organization/users/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "inviteUserSchema (POST)",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "admin+",
+        "POST": "admin+"
+      },
+      "description": "List/invite organization users"
+    },
+    {
+      "path": "/organization/users/:userId",
+      "methods": ["PATCH", "DELETE"],
+      "file": "app/api/v1/organization/users/[userId]/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "updateUserRoleSchema (PATCH)",
+      "tenantScoped": true,
+      "roles": {
+        "PATCH": "owner",
+        "DELETE": "admin+"
+      },
+      "description": "Update role/remove user"
+    },
+    {
+      "path": "/contacts",
+      "methods": ["GET", "POST"],
+      "file": "app/api/v1/contacts/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "contactQuerySchema (GET), createContactSchema (POST)",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "any",
+        "POST": "member+"
+      },
+      "description": "List/create contacts"
+    },
+    {
+      "path": "/contacts/:contactId",
+      "methods": ["GET", "PATCH", "DELETE"],
+      "file": "app/api/v1/contacts/[contactId]/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "updateContactSchema (PATCH)",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "any",
+        "PATCH": "member+",
+        "DELETE": "admin+"
+      },
+      "description": "Get/update/delete contact"
+    },
+    {
+      "path": "/companies",
+      "methods": ["GET", "POST"],
+      "file": "app/api/v1/companies/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "companyQuerySchema (GET), createCompanySchema (POST)",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "any",
+        "POST": "member+"
+      },
+      "description": "List/create companies"
+    },
+    {
+      "path": "/companies/:companyId",
+      "methods": ["GET", "PATCH", "DELETE"],
+      "file": "app/api/v1/companies/[companyId]/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "updateCompanySchema (PATCH)",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "any",
+        "PATCH": "member+",
+        "DELETE": "admin+"
+      },
+      "description": "Get/update/delete company"
+    },
+    {
+      "path": "/deals",
+      "methods": ["GET", "POST"],
+      "file": "app/api/v1/deals/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "dealQuerySchema (GET), createDealSchema (POST)",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "any",
+        "POST": "member+"
+      },
+      "description": "List/create deals"
+    },
+    {
+      "path": "/deals/:dealId",
+      "methods": ["GET", "PATCH", "DELETE"],
+      "file": "app/api/v1/deals/[dealId]/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "updateDealSchema (PATCH)",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "any",
+        "PATCH": "member+",
+        "DELETE": "admin+"
+      },
+      "description": "Get/update/delete deal"
+    },
+    {
+      "path": "/deals/:dealId/move",
+      "methods": ["POST"],
+      "file": "app/api/v1/deals/[dealId]/move/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "moveDealSchema",
+      "tenantScoped": true,
+      "roles": {
+        "POST": "member+"
+      },
+      "description": "Move deal to different stage/position"
+    },
+    {
+      "path": "/pipeline/board",
+      "methods": ["GET"],
+      "file": "app/api/v1/pipeline/board/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "pipelineBoardQuerySchema",
+      "tenantScoped": true,
+      "description": "Get full pipeline board with stages and deals"
+    },
+    {
+      "path": "/pipeline/stages",
+      "methods": ["GET", "POST", "PUT"],
+      "file": "app/api/v1/pipeline/stages/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "pipelineStageSchema (POST), reorderStagesSchema (PUT)",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "any",
+        "POST": "admin+",
+        "PUT": "admin+"
+      },
+      "description": "List/create/reorder stages"
+    },
+    {
+      "path": "/pipeline/stages/:stageId",
+      "methods": ["PATCH", "DELETE"],
+      "file": "app/api/v1/pipeline/stages/[stageId]/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "updateStageSchema (PATCH)",
+      "tenantScoped": true,
+      "roles": {
+        "PATCH": "admin+",
+        "DELETE": "admin+"
+      },
+      "description": "Update/delete pipeline stage"
+    },
+    {
+      "path": "/activities",
+      "methods": ["GET", "POST"],
+      "file": "app/api/v1/activities/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "activityQuerySchema (GET), createActivitySchema (POST)",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "any",
+        "POST": "member+"
+      },
+      "description": "List/create activities"
+    },
+    {
+      "path": "/activities/:activityId",
+      "methods": ["GET", "PATCH", "DELETE"],
+      "file": "app/api/v1/activities/[activityId]/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "updateActivitySchema (PATCH)",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "any",
+        "PATCH": "member+",
+        "DELETE": "admin+"
+      },
+      "description": "Get/update/delete activity"
+    },
+    {
+      "path": "/activities/:activityId/complete",
+      "methods": ["POST", "DELETE"],
+      "file": "app/api/v1/activities/[activityId]/complete/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "none",
+      "tenantScoped": true,
+      "roles": {
+        "POST": "member+",
+        "DELETE": "member+"
+      },
+      "description": "Mark activity complete/incomplete"
+    },
+    {
+      "path": "/tags",
+      "methods": ["GET", "POST"],
+      "file": "app/api/v1/tags/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "tagQuerySchema (GET), createTagSchema (POST)",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "any",
+        "POST": "member+"
+      },
+      "description": "List/create tags"
+    },
+    {
+      "path": "/tags/:tagId",
+      "methods": ["PATCH", "DELETE"],
+      "file": "app/api/v1/tags/[tagId]/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "updateTagSchema (PATCH)",
+      "tenantScoped": true,
+      "roles": {
+        "PATCH": "admin+",
+        "DELETE": "admin+"
+      },
+      "description": "Update/delete tag"
+    },
+    {
+      "path": "/search",
+      "methods": ["GET"],
+      "file": "app/api/v1/search/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "globalSearchSchema",
+      "tenantScoped": true,
+      "description": "Global search across contacts, companies, deals"
+    },
+    {
+      "path": "/api-keys",
+      "methods": ["GET", "POST"],
+      "file": "app/api/v1/api-keys/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "apiKeyQuerySchema (GET), createApiKeySchema (POST)",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "admin+",
+        "POST": "admin+"
+      },
+      "description": "List/create API keys"
+    },
+    {
+      "path": "/api-keys/:keyId",
+      "methods": ["DELETE"],
+      "file": "app/api/v1/api-keys/[keyId]/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "none",
+      "tenantScoped": true,
+      "roles": {
+        "DELETE": "admin+"
+      },
+      "description": "Revoke API key"
+    },
+    {
+      "path": "/audit-logs",
+      "methods": ["GET"],
+      "file": "app/api/v1/audit-logs/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "auditLogQuerySchema",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "admin+"
+      },
+      "description": "Query audit logs"
+    },
+    {
+      "path": "/import",
+      "methods": ["GET", "POST"],
+      "file": "app/api/v1/import/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "importJobQuerySchema (GET), createImportJobSchema (POST)",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "member+",
+        "POST": "member+"
+      },
+      "description": "List/create import jobs"
+    },
+    {
+      "path": "/import/:jobId",
+      "methods": ["GET"],
+      "file": "app/api/v1/import/[jobId]/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "none",
+      "tenantScoped": true,
+      "description": "Get import job status"
+    },
+    {
+      "path": "/export",
+      "methods": ["GET"],
+      "file": "app/api/v1/export/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "exportQuerySchema",
+      "tenantScoped": true,
+      "roles": {
+        "GET": "owner"
+      },
+      "description": "Export data (owner only)"
+    },
+    {
+      "path": "/reports/dashboard",
+      "methods": ["GET"],
+      "file": "app/api/v1/reports/dashboard/route.ts",
+      "auth": "session|apiKey",
+      "rateLimit": "none",
+      "validation": "none",
+      "tenantScoped": true,
+      "description": "Get dashboard analytics"
+    }
+  ],
+  "securityNotes": [
+    "No rate limiting implemented on any endpoint",
+    "All tenant-scoped endpoints filter by auth.tenantId",
+    "API key auth grants admin-level access",
+    "Session-based auth uses encrypted cookies",
+    "Password reset tokens are one-time use with expiration"
+  ]
+}

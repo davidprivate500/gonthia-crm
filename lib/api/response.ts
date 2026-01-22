@@ -83,6 +83,34 @@ export function internalError(message = 'An unexpected error occurred'): NextRes
   return errorResponse('INTERNAL_ERROR', message, 500);
 }
 
+/**
+ * BUG-027 FIX: Safe error handler that sanitizes errors in production
+ * Logs full error details server-side but returns generic message to client
+ */
+export function safeInternalError(error: unknown, context?: string): NextResponse {
+  // Always log full error server-side
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const errorStack = error instanceof Error ? error.stack : undefined;
+
+  console.error(`[${context || 'API Error'}]`, {
+    message: errorMessage,
+    stack: errorStack,
+    timestamp: new Date().toISOString(),
+  });
+
+  // In production, never expose internal error details
+  if (process.env.NODE_ENV === 'production') {
+    return errorResponse('INTERNAL_ERROR', 'An unexpected error occurred', 500);
+  }
+
+  // In development, include error message for debugging
+  return errorResponse(
+    'INTERNAL_ERROR',
+    `[DEV] ${errorMessage}`,
+    500
+  );
+}
+
 export function conflictError(message: string): NextResponse {
   return errorResponse('CONFLICT', message, 409);
 }

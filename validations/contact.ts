@@ -15,16 +15,17 @@ export const createContactSchema = z.object({
 
 export const updateContactSchema = createContactSchema.partial();
 
+// BUG-013 FIX: Added max length to search to prevent abuse
 export const contactQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(20),
   sortBy: z.enum(['firstName', 'lastName', 'email', 'createdAt', 'updatedAt']).default('createdAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
-  search: z.string().optional(),
+  search: z.string().max(200).optional(),
   status: contactStatusSchema.optional(),
   ownerId: z.string().uuid().optional(),
   companyId: z.string().uuid().optional(),
-  tagIds: z.string().optional(), // comma-separated UUIDs
+  tagIds: z.string().max(2000).optional(), // comma-separated UUIDs
 });
 
 export type CreateContactInput = z.infer<typeof createContactSchema>;

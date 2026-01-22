@@ -18,13 +18,14 @@ export const createCompanySchema = z.object({
 
 export const updateCompanySchema = createCompanySchema.partial();
 
+// BUG-013 FIX: Added max length to search to prevent abuse
 export const companyQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(20),
   sortBy: z.enum(['name', 'industry', 'createdAt', 'updatedAt']).default('createdAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
-  search: z.string().optional(),
-  industry: z.string().optional(),
+  search: z.string().max(200).optional(),
+  industry: z.string().max(100).optional(),
   size: z.enum(['1-10', '11-50', '51-200', '201-500', '501-1000', '1000+']).optional(),
   ownerId: z.string().uuid().optional(),
 });
