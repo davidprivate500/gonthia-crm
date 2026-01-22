@@ -24,6 +24,7 @@ async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promis
 
   const config: RequestInit = {
     ...rest,
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...rest.headers,
@@ -49,6 +50,7 @@ async function masterApiFetch<T>(endpoint: string, options: FetchOptions = {}): 
 
   const config: RequestInit = {
     ...rest,
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...rest.headers,
@@ -208,10 +210,10 @@ export const api = {
     get: (id: string) => apiFetch(`/import/${id}`),
     getJob: (id: string) => apiFetch(`/import/${id}`),
     create: (formData: FormData) =>
-      fetch(`${API_BASE}/import`, { method: 'POST', body: formData }).then(r => r.json()),
+      fetch(`${API_BASE}/import`, { method: 'POST', body: formData, credentials: 'include' }).then(r => r.json()),
   },
   export: (params: { entityType: string; format?: string }) =>
-    fetch(`${API_BASE}/export?${buildSearchParams(params)}`),
+    fetch(`${API_BASE}/export?${buildSearchParams(params)}`, { credentials: 'include' }),
 
   // Master Admin APIs
   master: {
