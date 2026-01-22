@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
       return auth;
     }
 
-    // Get full user info
+    // Get full user info including isMasterAdmin
     const user = await db.query.users.findFirst({
       where: eq(users.id, auth.userId),
       columns: {
@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
         firstName: true,
         lastName: true,
         createdAt: true,
+        isMasterAdmin: true,
       },
       with: {
         tenant: {
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-    }) as { id: string; email: string; role: string; firstName: string | null; lastName: string | null; createdAt: Date; tenant: { id: string; name: string } } | undefined;
+    }) as { id: string; email: string; role: string; firstName: string | null; lastName: string | null; createdAt: Date; isMasterAdmin: boolean; tenant: { id: string; name: string } | null } | undefined;
 
     if (!user) {
       return internalError('User not found');
@@ -44,6 +45,7 @@ export async function GET(request: NextRequest) {
         firstName: user.firstName,
         lastName: user.lastName,
         createdAt: user.createdAt,
+        isMasterAdmin: user.isMasterAdmin,
       },
       organization: user.tenant,
     });

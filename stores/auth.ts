@@ -28,7 +28,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   organization: null,
-  isLoading: false,
+  isLoading: true,  // Start as true to prevent premature redirects
   isAuthenticated: false,
   isMasterAdmin: false,
   setAuth: (user, organization) =>
