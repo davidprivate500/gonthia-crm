@@ -22,6 +22,10 @@ export async function GET(request: NextRequest) {
       return successResponse({ organization: tenant });
     }
 
+    if (!auth.tenantId) {
+      return internalError();
+    }
+
     const tenant = await db.query.tenants.findFirst({
       where: eq(tenants.id, auth.tenantId),
     });
@@ -45,6 +49,10 @@ export async function PATCH(request: NextRequest) {
 
     if (!result.success) {
       return validationError(formatZodErrors(result.error));
+    }
+
+    if (!auth.tenantId) {
+      return internalError();
     }
 
     const [updated] = await db.update(tenants)

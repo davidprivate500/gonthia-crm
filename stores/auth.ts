@@ -6,6 +6,7 @@ export interface User {
   role: 'owner' | 'admin' | 'member' | 'readonly';
   firstName: string | null;
   lastName: string | null;
+  isMasterAdmin?: boolean;
 }
 
 export interface Organization {
@@ -18,7 +19,8 @@ interface AuthState {
   organization: Organization | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  setAuth: (user: User, organization: Organization) => void;
+  isMasterAdmin: boolean;
+  setAuth: (user: User, organization: Organization | null) => void;
   clearAuth: () => void;
   setLoading: (loading: boolean) => void;
 }
@@ -28,9 +30,22 @@ export const useAuthStore = create<AuthState>((set) => ({
   organization: null,
   isLoading: false,
   isAuthenticated: false,
+  isMasterAdmin: false,
   setAuth: (user, organization) =>
-    set({ user, organization, isAuthenticated: true, isLoading: false }),
+    set({
+      user,
+      organization,
+      isAuthenticated: true,
+      isLoading: false,
+      isMasterAdmin: user.isMasterAdmin === true,
+    }),
   clearAuth: () =>
-    set({ user: null, organization: null, isAuthenticated: false, isLoading: false }),
+    set({
+      user: null,
+      organization: null,
+      isAuthenticated: false,
+      isLoading: false,
+      isMasterAdmin: false,
+    }),
   setLoading: (isLoading) => set({ isLoading }),
 }));

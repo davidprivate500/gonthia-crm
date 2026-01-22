@@ -66,6 +66,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return forbiddenError('You cannot change your own role');
     }
 
+    if (!auth.tenantId) {
+      return forbiddenError('Tenant access required');
+    }
+
     // Verify user exists in same tenant
     const targetUser = await db.query.users.findFirst({
       where: and(
@@ -119,6 +123,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     // Cannot delete yourself
     if (userId === auth.userId) {
       return forbiddenError('You cannot delete your own account');
+    }
+
+    if (!auth.tenantId) {
+      return forbiddenError('Tenant access required');
     }
 
     // Verify user exists in same tenant
