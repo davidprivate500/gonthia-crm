@@ -196,7 +196,11 @@ export default function TenantDetailPage() {
       setIssueImmediately(false);
       setIsInvoiceDialogOpen(false);
     } catch (error) {
-      console.error('Failed to create invoice:', error);
+      const apiError = error as { error?: { message?: string; details?: Record<string, string[]> } };
+      const message = apiError?.error?.message || 'Unknown error';
+      const details = apiError?.error?.details;
+      console.error('Failed to create invoice:', message, details);
+      alert(`Failed to create invoice: ${message}${details ? '\n' + JSON.stringify(details, null, 2) : ''}`);
     } finally {
       setIsCreatingInvoice(false);
     }

@@ -80,8 +80,10 @@ export default function PlatformSettingsPage() {
       setSaveMessage('Settings saved successfully');
       setTimeout(() => setSaveMessage(null), 3000);
     } catch (error) {
-      console.error('Failed to save settings:', error);
-      setSaveMessage('Failed to save settings');
+      const apiError = error as { error?: { message?: string; details?: Record<string, string[]> } };
+      const message = apiError?.error?.message || 'Unknown error';
+      console.error('Failed to save settings:', message, apiError?.error?.details);
+      setSaveMessage(`Failed to save: ${message}`);
     } finally {
       setIsSaving(false);
     }

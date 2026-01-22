@@ -2,6 +2,26 @@ import { ApiResponse } from './response';
 
 const API_BASE = '/api/v1';
 const MASTER_API_BASE = '/api/master';
+const CSRF_COOKIE_NAME = 'gonthia-csrf-token';
+
+function getCsrfToken(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(new RegExp(`(^| )${CSRF_COOKIE_NAME}=([^;]+)`));
+  return match ? match[2] : null;
+}
+
+async function ensureCsrfToken(): Promise<string | null> {
+  let token = getCsrfToken();
+  if (!token) {
+    // Fetch CSRF token from API
+    const response = await fetch('/api/v1/csrf', { credentials: 'include' });
+    if (response.ok) {
+      const data = await response.json();
+      token = data.token;
+    }
+  }
+  return token;
+}
 
 interface FetchOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
@@ -21,12 +41,19 @@ function buildSearchParams(params?: Record<string, string | number | boolean | u
 
 async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<ApiResponse<T>> {
   const { body, ...rest } = options;
+  const method = rest.method || 'GET';
+
+  // Get CSRF token for mutating requests
+  const csrfToken = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
+    ? await ensureCsrfToken()
+    : null;
 
   const config: RequestInit = {
     ...rest,
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...(csrfToken && { 'X-CSRF-Token': csrfToken }),
       ...rest.headers,
     },
   };
@@ -47,12 +74,19 @@ async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promis
 
 async function masterApiFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<ApiResponse<T>> {
   const { body, ...rest } = options;
+  const method = rest.method || 'GET';
+
+  // Get CSRF token for mutating requests
+  const csrfToken = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
+    ? await ensureCsrfToken()
+    : null;
 
   const config: RequestInit = {
     ...rest,
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...(csrfToken && { 'X-CSRF-Token': csrfToken }),
       ...rest.headers,
     },
   };
