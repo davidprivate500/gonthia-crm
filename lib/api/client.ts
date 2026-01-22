@@ -1,6 +1,7 @@
 import { ApiResponse } from './response';
 
 const API_BASE = '/api/v1';
+const MASTER_API_BASE = '/api/master';
 
 interface FetchOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
@@ -34,6 +35,31 @@ async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promis
   }
 
   const response = await fetch(`${API_BASE}${endpoint}`, config);
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw data;
+  }
+
+  return data;
+}
+
+async function masterApiFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<ApiResponse<T>> {
+  const { body, ...rest } = options;
+
+  const config: RequestInit = {
+    ...rest,
+    headers: {
+      'Content-Type': 'application/json',
+      ...rest.headers,
+    },
+  };
+
+  if (body) {
+    config.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(`${MASTER_API_BASE}${endpoint}`, config);
   const data = await response.json();
 
   if (!response.ok) {
@@ -186,4 +212,50 @@ export const api = {
   },
   export: (params: { entityType: string; format?: string }) =>
     fetch(`${API_BASE}/export?${buildSearchParams(params)}`),
+
+  // Master Admin APIs
+  master: {
+    // Platform settings
+    settings: {
+      get: () => masterApiFetch('/settings'),
+      update: (data: Record<string, unknown>) =>
+        masterApiFetch('/settings', { method: 'PUT', body: data }),
+    },
+
+    // Tenants
+    tenants: {
+      list: (params?: Record<string, string | number | undefined>) =>
+        masterApiFetch(`/tenants?${buildSearchParams(params)}`),
+      get: (id: string) => masterApiFetch(`/tenants/${id}`),
+      updateBilling: (id: string, data: Record<string, unknown>) =>
+        masterApiFetch(`/tenants/${id}`, { method: 'PUT', body: data }),
+    },
+
+    // Invoices
+    invoices: {
+      listForTenant: (tenantId: string, params?: Record<string, string | number | undefined>) =>
+        masterApiFetch(`/tenants/${tenantId}/invoices?${buildSearchParams(params)}`),
+      create: (tenantId: string, data: Record<string, unknown>) =>
+        masterApiFetch(`/tenants/${tenantId}/invoices`, { method: 'POST', body: data }),
+      get: (invoiceId: string) => masterApiFetch(`/invoices/${invoiceId}`),
+      update: (invoiceId: string, data: Record<string, unknown>) =>
+        masterApiFetch(`/invoices/${invoiceId}`, { method: 'PATCH', body: data }),
+      delete: (invoiceId: string) =>
+        masterApiFetch(`/invoices/${invoiceId}`, { method: 'DELETE' }),
+    },
+  },
+
+  // Tenant Billing APIs (for tenants to view their own invoices)
+  billing: {
+    info: {
+      get: () => apiFetch('/billing/info'),
+      update: (data: Record<string, unknown>) =>
+        apiFetch('/billing/info', { method: 'PUT', body: data }),
+    },
+    invoices: {
+      list: (params?: Record<string, string | number | undefined>) =>
+        apiFetch(`/billing/invoices?${buildSearchParams(params)}`),
+      get: (invoiceId: string) => apiFetch(`/billing/invoices/${invoiceId}`),
+    },
+  },
 };

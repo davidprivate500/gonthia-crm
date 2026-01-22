@@ -54,16 +54,24 @@ export async function GET(request: NextRequest, context: RouteContext) {
       .from(invoices)
       .where(whereClause);
 
-    // Build order by
-    const orderByMap: Record<string, typeof invoices.invoiceNumber> = {
-      invoiceNumber: invoices.invoiceNumber,
-      issueDate: invoices.issueDate,
-      dueDate: invoices.dueDate,
-      total: invoices.totalAmount,
-      createdAt: invoices.createdAt,
-    };
-    const orderByField = orderByMap[sortBy] || invoices.createdAt;
-    const orderByClause = sortOrder === 'asc' ? asc(orderByField) : desc(orderByField);
+    // Build order by clause based on sort field
+    let orderByClause;
+    switch (sortBy) {
+      case 'invoiceNumber':
+        orderByClause = sortOrder === 'asc' ? asc(invoices.invoiceNumber) : desc(invoices.invoiceNumber);
+        break;
+      case 'issueDate':
+        orderByClause = sortOrder === 'asc' ? asc(invoices.issueDate) : desc(invoices.issueDate);
+        break;
+      case 'dueDate':
+        orderByClause = sortOrder === 'asc' ? asc(invoices.dueDate) : desc(invoices.dueDate);
+        break;
+      case 'total':
+        orderByClause = sortOrder === 'asc' ? asc(invoices.total) : desc(invoices.total);
+        break;
+      default:
+        orderByClause = sortOrder === 'asc' ? asc(invoices.createdAt) : desc(invoices.createdAt);
+    }
 
     // Get invoices with line items
     const invoiceList = await db.query.invoices.findMany({
@@ -200,7 +208,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           subtotal: subtotal.toString(),
           taxRate: taxRate.toString(),
           taxAmount: taxAmount.toString(),
-          totalAmount: totalAmount.toString(),
+          total: totalAmount.toString(),
           notes: invoiceData.notes,
           internalNotes: invoiceData.internalNotes,
           issuerSnapshot,
@@ -215,8 +223,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         description: item.description,
         quantity: item.quantity.toString(),
         unitPrice: item.unitPrice.toString(),
-        lineTotal: (item.quantity * item.unitPrice).toString(),
-        sortOrder: index,
+        amount: (item.quantity * item.unitPrice).toString(),
+        position: index,
       }));
 
       await tx.insert(invoiceLineItems)
@@ -229,7 +237,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       };
     });
 
-    return successResponse(invoice, 201);
+    return successResponse(invoice);
   } catch (error) {
     console.error('Create invoice error:', error);
     return internalError();

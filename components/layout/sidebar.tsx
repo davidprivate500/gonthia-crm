@@ -31,6 +31,7 @@ const navigation = [
 const adminNavigation = [
   { name: 'Pipeline', href: '/settings/pipeline', icon: Kanban },
   { name: 'Team', href: '/settings/team', icon: Users },
+  { name: 'Billing', href: '/settings/billing', icon: FileText },
   { name: 'API Keys', href: '/settings/api-keys', icon: Key },
   { name: 'Audit Log', href: '/settings/audit-log', icon: Shield },
   { name: 'Import/Export', href: '/settings/import-export', icon: FileText },

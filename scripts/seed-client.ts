@@ -647,6 +647,12 @@ async function seed() {
       c.status === 'customer' || c.status === 'prospect'
     );
 
+    // Create company lookup map for deal titles
+    const companyNameMap = new Map<string, string>();
+    for (const company of companyRecords) {
+      companyNameMap.set(company.id, company.name);
+    }
+
     const dealData: schema.NewDeal[] = [];
     const TARGET_MONTHLY_VALUE = 8_000_000;
     const monthlyDeals = new Map<string, { count: number; value: number }>();
@@ -712,7 +718,7 @@ async function seed() {
 
         dealData.push({
           tenantId: tenant.id,
-          title: `${contact.company?.name || contact.firstName + ' ' + contact.lastName} - ${rng.pick(['Platform License', 'Enterprise Agreement', 'Annual Subscription', 'Premium Package', 'Growth Plan', 'Pro Tier'])}`,
+          title: `${contact.companyId ? companyNameMap.get(contact.companyId) : contact.firstName + ' ' + contact.lastName} - ${rng.pick(['Platform License', 'Enterprise Agreement', 'Annual Subscription', 'Premium Package', 'Growth Plan', 'Pro Tier'])}`,
           value: value.toString(),
           currency: 'USD',
           stageId: stage.id,

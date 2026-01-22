@@ -7,7 +7,8 @@ export type ErrorCode =
   | 'FORBIDDEN'
   | 'INTERNAL_ERROR'
   | 'RATE_LIMITED'
-  | 'CONFLICT';
+  | 'CONFLICT'
+  | 'BAD_REQUEST';
 
 export interface ApiError {
   code: ErrorCode;
@@ -113,6 +114,10 @@ export function safeInternalError(error: unknown, context?: string): NextRespons
 
 export function conflictError(message: string): NextResponse {
   return errorResponse('CONFLICT', message, 409);
+}
+
+export function badRequestError(message: string): NextResponse {
+  return errorResponse('BAD_REQUEST', message, 400);
 }
 
 export function rateLimitedError(retryAfter: number): NextResponse {

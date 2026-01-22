@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       ),
       with: {
         lineItems: {
-          orderBy: (items, { asc }) => [asc(items.sortOrder)],
+          orderBy: (items, { asc }) => [asc(items.position)],
         },
       },
     });

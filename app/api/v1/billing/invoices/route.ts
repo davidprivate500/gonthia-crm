@@ -42,23 +42,31 @@ export async function GET(request: NextRequest) {
       .from(invoices)
       .where(whereClause);
 
-    // Build order by
-    const orderByMap: Record<string, typeof invoices.invoiceNumber> = {
-      invoiceNumber: invoices.invoiceNumber,
-      issueDate: invoices.issueDate,
-      dueDate: invoices.dueDate,
-      total: invoices.totalAmount,
-      createdAt: invoices.createdAt,
-    };
-    const orderByField = orderByMap[sortBy] || invoices.createdAt;
-    const orderByClause = sortOrder === 'asc' ? asc(orderByField) : desc(orderByField);
+    // Build order by clause based on sort field
+    let orderByClause;
+    switch (sortBy) {
+      case 'invoiceNumber':
+        orderByClause = sortOrder === 'asc' ? asc(invoices.invoiceNumber) : desc(invoices.invoiceNumber);
+        break;
+      case 'issueDate':
+        orderByClause = sortOrder === 'asc' ? asc(invoices.issueDate) : desc(invoices.issueDate);
+        break;
+      case 'dueDate':
+        orderByClause = sortOrder === 'asc' ? asc(invoices.dueDate) : desc(invoices.dueDate);
+        break;
+      case 'total':
+        orderByClause = sortOrder === 'asc' ? asc(invoices.total) : desc(invoices.total);
+        break;
+      default:
+        orderByClause = sortOrder === 'asc' ? asc(invoices.createdAt) : desc(invoices.createdAt);
+    }
 
     // Get invoices with line items
     const invoiceList = await db.query.invoices.findMany({
       where: whereClause,
       with: {
         lineItems: {
-          orderBy: (items, { asc }) => [asc(items.sortOrder)],
+          orderBy: (items, { asc }) => [asc(items.position)],
         },
       },
       limit: pageSize,

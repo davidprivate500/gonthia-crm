@@ -23,7 +23,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       where: eq(invoices.id, invoiceId),
       with: {
         lineItems: {
-          orderBy: (items, { asc }) => [asc(items.sortOrder)],
+          orderBy: (items, { asc }) => [asc(items.position)],
         },
         tenant: {
           columns: {
@@ -105,7 +105,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
       if (status === 'void') {
         updates.voidedAt = new Date();
-        updates.voidedById = auth.userId;
       }
 
       const [updated] = await db.update(invoices)
@@ -143,18 +142,27 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const taxAmount = subtotal * (taxRate / 100);
     const totalAmount = subtotal + taxAmount;
 
+    // Prepare update data with proper date conversions
+    const updateValues: Record<string, unknown> = {
+      taxRate: taxRate.toString(),
+      subtotal: subtotal.toString(),
+      taxAmount: taxAmount.toString(),
+      total: totalAmount.toString(),
+      updatedAt: new Date(),
+    };
+
+    // Only set fields that were provided
+    if (updateData.currency !== undefined) updateValues.currency = updateData.currency;
+    if (updateData.issueDate !== undefined) updateValues.issueDate = new Date(updateData.issueDate);
+    if (updateData.dueDate !== undefined) updateValues.dueDate = new Date(updateData.dueDate);
+    if (updateData.notes !== undefined) updateValues.notes = updateData.notes;
+    if (updateData.internalNotes !== undefined) updateValues.internalNotes = updateData.internalNotes;
+
     // Update in transaction
     const updatedInvoice = await db.transaction(async (tx) => {
       // Update invoice
       const [updated] = await tx.update(invoices)
-        .set({
-          ...updateData,
-          taxRate: taxRate.toString(),
-          subtotal: subtotal.toString(),
-          taxAmount: taxAmount.toString(),
-          totalAmount: totalAmount.toString(),
-          updatedAt: new Date(),
-        })
+        .set(updateValues)
         .where(eq(invoices.id, invoiceId))
         .returning();
 
@@ -170,8 +178,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           description: item.description,
           quantity: item.quantity.toString(),
           unitPrice: item.unitPrice.toString(),
-          lineTotal: (item.quantity * item.unitPrice).toString(),
-          sortOrder: index,
+          amount: (item.quantity * item.unitPrice).toString(),
+          position: index,
         }));
 
         await tx.insert(invoiceLineItems)
@@ -183,7 +191,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         where: eq(invoices.id, invoiceId),
         with: {
           lineItems: {
-            orderBy: (items, { asc }) => [asc(items.sortOrder)],
+            orderBy: (items, { asc }) => [asc(items.position)],
           },
         },
       });

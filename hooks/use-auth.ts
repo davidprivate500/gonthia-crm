@@ -7,7 +7,7 @@ import { api } from '@/lib/api/client';
 
 interface AuthResponse {
   user: User;
-  organization: Organization;
+  organization: Organization | null;
 }
 
 interface ApiErrorResponse {
@@ -19,7 +19,7 @@ interface ApiErrorResponse {
 
 export function useAuth({ requireAuth = true } = {}) {
   const router = useRouter();
-  const { user, organization, isLoading, isAuthenticated, setAuth, clearAuth, setLoading } = useAuthStore();
+  const { user, organization, isLoading, isAuthenticated, isMasterAdmin, setAuth, clearAuth, setLoading } = useAuthStore();
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -100,6 +100,7 @@ export function useAuth({ requireAuth = true } = {}) {
     organization,
     isLoading,
     isAuthenticated,
+    isMasterAdmin,
     login,
     register,
     logout,

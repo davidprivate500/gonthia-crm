@@ -24,11 +24,11 @@ export async function generateInvoiceNumber(): Promise<string> {
 
     if (existing) {
       // Increment and return
-      const newSequence = existing.lastSequence + 1;
+      const newSequence = existing.lastNumber + 1;
 
       await tx.update(invoiceNumberSequence)
         .set({
-          lastSequence: newSequence,
+          lastNumber: newSequence,
           updatedAt: new Date(),
         })
         .where(eq(invoiceNumberSequence.year, currentYear));
@@ -39,11 +39,11 @@ export async function generateInvoiceNumber(): Promise<string> {
       const [created] = await tx.insert(invoiceNumberSequence)
         .values({
           year: currentYear,
-          lastSequence: 1,
+          lastNumber: 1,
         })
         .returning();
 
-      return created.lastSequence;
+      return created.lastNumber;
     }
   });
 
