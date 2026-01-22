@@ -169,9 +169,9 @@ export function CommandPalette() {
                     <Kanban className="mr-2 h-4 w-4" />
                     <div className="flex flex-col">
                       <span>{deal.displayName}</span>
-                      {deal.value && (
+                      {deal.value && !isNaN(Number(deal.value)) && (
                         <span className="text-xs text-gray-500">
-                          ${parseFloat(deal.value).toLocaleString()}
+                          ${Number(deal.value).toLocaleString()}
                         </span>
                       )}
                     </div>

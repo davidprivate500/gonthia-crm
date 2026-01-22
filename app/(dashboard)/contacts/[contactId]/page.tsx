@@ -172,8 +172,8 @@ export default function ContactDetailPage() {
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-4">
                   <div className="h-16 w-16 rounded-full bg-gray-200 flex items-center justify-center text-2xl font-medium">
-                    {contact.firstName[0]}
-                    {contact.lastName[0]}
+                    {(contact.firstName?.[0] || '').toUpperCase()}
+                    {(contact.lastName?.[0] || '').toUpperCase()}
                   </div>
                   <div>
                     <h2 className="text-xl font-semibold">
