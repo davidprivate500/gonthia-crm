@@ -172,14 +172,14 @@ function NewActivityForm() {
               <div className="space-y-2">
                 <Label htmlFor="contactId">Contact</Label>
                 <Select
-                  value={formData.contactId}
-                  onValueChange={(value) => setFormData({ ...formData, contactId: value })}
+                  value={formData.contactId || "none"}
+                  onValueChange={(value) => setFormData({ ...formData, contactId: value === "none" ? "" : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select contact" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No contact</SelectItem>
+                    <SelectItem value="none">No contact</SelectItem>
                     {contacts.map((contact) => (
                       <SelectItem key={contact.id} value={contact.id}>
                         {contact.firstName} {contact.lastName}
@@ -192,14 +192,14 @@ function NewActivityForm() {
               <div className="space-y-2">
                 <Label htmlFor="companyId">Company</Label>
                 <Select
-                  value={formData.companyId}
-                  onValueChange={(value) => setFormData({ ...formData, companyId: value })}
+                  value={formData.companyId || "none"}
+                  onValueChange={(value) => setFormData({ ...formData, companyId: value === "none" ? "" : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select company" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No company</SelectItem>
+                    <SelectItem value="none">No company</SelectItem>
                     {companies.map((company) => (
                       <SelectItem key={company.id} value={company.id}>
                         {company.name}
@@ -212,14 +212,14 @@ function NewActivityForm() {
               <div className="space-y-2">
                 <Label htmlFor="dealId">Deal</Label>
                 <Select
-                  value={formData.dealId}
-                  onValueChange={(value) => setFormData({ ...formData, dealId: value })}
+                  value={formData.dealId || "none"}
+                  onValueChange={(value) => setFormData({ ...formData, dealId: value === "none" ? "" : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select deal" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No deal</SelectItem>
+                    <SelectItem value="none">No deal</SelectItem>
                     {deals.map((deal) => (
                       <SelectItem key={deal.id} value={deal.id}>
                         {deal.title}

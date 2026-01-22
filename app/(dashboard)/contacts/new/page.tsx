@@ -153,14 +153,14 @@ export default function NewContactPage() {
               <div className="space-y-2">
                 <Label htmlFor="companyId">Company</Label>
                 <Select
-                  value={formData.companyId}
-                  onValueChange={(value) => setFormData({ ...formData, companyId: value })}
+                  value={formData.companyId || "none"}
+                  onValueChange={(value) => setFormData({ ...formData, companyId: value === "none" ? "" : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a company" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No company</SelectItem>
+                    <SelectItem value="none">No company</SelectItem>
                     {companies.map((company) => (
                       <SelectItem key={company.id} value={company.id}>
                         {company.name}
