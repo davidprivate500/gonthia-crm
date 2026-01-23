@@ -14,13 +14,21 @@ export interface Organization {
   name: string;
 }
 
+export interface ImpersonationInfo {
+  isImpersonating: boolean;
+  tenantName?: string;
+  originalAdminEmail?: string;
+  startedAt?: string;
+}
+
 interface AuthState {
   user: User | null;
   organization: Organization | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   isMasterAdmin: boolean;
-  setAuth: (user: User, organization: Organization | null) => void;
+  impersonation: ImpersonationInfo | null;
+  setAuth: (user: User, organization: Organization | null, impersonation?: ImpersonationInfo | null) => void;
   clearAuth: () => void;
   setLoading: (loading: boolean) => void;
 }
@@ -31,13 +39,15 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: true,  // Start as true to prevent premature redirects
   isAuthenticated: false,
   isMasterAdmin: false,
-  setAuth: (user, organization) =>
+  impersonation: null,
+  setAuth: (user, organization, impersonation = null) =>
     set({
       user,
       organization,
       isAuthenticated: true,
       isLoading: false,
       isMasterAdmin: user.isMasterAdmin === true,
+      impersonation,
     }),
   clearAuth: () =>
     set({
@@ -46,6 +56,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       isAuthenticated: false,
       isLoading: false,
       isMasterAdmin: false,
+      impersonation: null,
     }),
   setLoading: (isLoading) => set({ isLoading }),
 }));

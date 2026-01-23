@@ -9,7 +9,8 @@ export const activityTypeEnum = pgEnum('activity_type', ['note', 'call', 'email'
 export const auditActionEnum = pgEnum('audit_action', [
   'create', 'update', 'delete',
   'login_success', 'login_failed', 'logout',
-  'password_reset_request', 'password_reset_success'
+  'password_reset_request', 'password_reset_success',
+  'impersonation_start', 'impersonation_end'
 ]);
 export const importStatusEnum = pgEnum('import_status', ['pending', 'processing', 'completed', 'failed']);
 // Invoice status enum

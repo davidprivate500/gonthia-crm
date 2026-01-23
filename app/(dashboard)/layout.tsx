@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/layout/sidebar';
+import { ImpersonationBanner } from '@/components/layout/impersonation-banner';
 import { useAuth } from '@/hooks/use-auth';
 import { CommandPalette } from '@/components/command-palette';
 
@@ -12,7 +13,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { isLoading, isAuthenticated } = useAuth();
+  const { isLoading, isAuthenticated, impersonation } = useAuth();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -38,11 +39,19 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto bg-gray-50">
-        {children}
-      </main>
+    <div className="flex flex-col h-screen overflow-hidden">
+      {impersonation?.isImpersonating && (
+        <ImpersonationBanner
+          tenantName={impersonation.tenantName || 'Unknown Tenant'}
+          originalAdminEmail={impersonation.originalAdminEmail}
+        />
+      )}
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar />
+        <main className="flex-1 overflow-y-auto bg-gray-50">
+          {children}
+        </main>
+      </div>
       <CommandPalette />
     </div>
   );

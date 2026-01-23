@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db, users } from '@/lib/db';
 import { requireAuth } from '@/lib/auth/middleware';
+import { getSession, getImpersonationInfo } from '@/lib/auth/session';
 import { successResponse, internalError } from '@/lib/api/response';
 import { eq } from 'drizzle-orm';
 
@@ -37,6 +38,10 @@ export async function GET(request: NextRequest) {
       return internalError('User not found');
     }
 
+    // Get impersonation info from session
+    const session = await getSession();
+    const impersonation = getImpersonationInfo(session);
+
     return successResponse({
       user: {
         id: user.id,
@@ -48,6 +53,7 @@ export async function GET(request: NextRequest) {
         isMasterAdmin: user.isMasterAdmin,
       },
       organization: user.tenant,
+      impersonation,
     });
   } catch (error) {
     console.error('Get current user error:', error);

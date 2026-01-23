@@ -93,6 +93,7 @@ export default function DemoJobDetailPage() {
   const [job, setJob] = useState<DemoJobDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isImpersonating, setIsImpersonating] = useState(false);
 
   const loadJob = async () => {
     try {
@@ -134,6 +135,23 @@ export default function DemoJobDetailPage() {
       alert('Failed to delete demo tenant.');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleLoginAsTenant = async () => {
+    if (!job?.createdTenantId) return;
+
+    setIsImpersonating(true);
+    try {
+      const response = await api.master.impersonate(job.createdTenantId);
+      if (response.data?.success && response.data.redirectUrl) {
+        window.open(response.data.redirectUrl, '_blank');
+      }
+    } catch (error) {
+      console.error('Failed to impersonate:', error);
+      alert('Failed to login as tenant. Please try again.');
+    } finally {
+      setIsImpersonating(false);
     }
   };
 
@@ -188,10 +206,20 @@ export default function DemoJobDetailPage() {
             {job.createdTenantId && (
               <Button
                 variant="outline"
-                onClick={() => window.open(`/dashboard?tenant=${job.createdTenantId}`, '_blank')}
+                onClick={handleLoginAsTenant}
+                disabled={isImpersonating}
               >
-                <LogIn className="h-4 w-4 mr-2" />
-                Login as Tenant
+                {isImpersonating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Logging in...
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="h-4 w-4 mr-2" />
+                    Login as Tenant
+                  </>
+                )}
               </Button>
             )}
             {job.status === 'completed' && job.createdTenantId && (

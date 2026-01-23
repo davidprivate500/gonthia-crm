@@ -95,6 +95,7 @@ export default function DemoGeneratorPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [impersonatingJobId, setImpersonatingJobId] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -189,6 +190,23 @@ export default function DemoGeneratorPage() {
     } catch (error) {
       console.error('Failed to delete:', error);
       alert('Failed to delete demo tenant.');
+    }
+  };
+
+  const handleLoginAsTenant = async (job: DemoJob) => {
+    if (!job.createdTenantId) return;
+
+    setImpersonatingJobId(job.id);
+    try {
+      const response = await api.master.impersonate(job.createdTenantId);
+      if (response.data?.success && response.data.redirectUrl) {
+        window.open(response.data.redirectUrl, '_blank');
+      }
+    } catch (error) {
+      console.error('Failed to login as tenant:', error);
+      alert('Failed to login as tenant. Please try again.');
+    } finally {
+      setImpersonatingJobId(null);
     }
   };
 
@@ -494,14 +512,15 @@ export default function DemoGeneratorPage() {
                               </DropdownMenuItem>
                               {job.createdTenantId && (
                                 <DropdownMenuItem
-                                  onClick={() => {
-                                    // Open tenant dashboard in new tab
-                                    // This would need a "login as" feature
-                                    window.open(`/dashboard?tenant=${job.createdTenantId}`, '_blank');
-                                  }}
+                                  onClick={() => handleLoginAsTenant(job)}
+                                  disabled={impersonatingJobId === job.id}
                                 >
-                                  <LogIn className="h-4 w-4 mr-2" />
-                                  Login as Tenant
+                                  {impersonatingJobId === job.id ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <LogIn className="h-4 w-4 mr-2" />
+                                  )}
+                                  {impersonatingJobId === job.id ? 'Logging in...' : 'Login as Tenant'}
                                 </DropdownMenuItem>
                               )}
                               {job.status === 'completed' && job.createdTenantId && (

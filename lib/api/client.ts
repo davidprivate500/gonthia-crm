@@ -292,6 +292,18 @@ export const api = {
       delete: (jobId: string) =>
         masterApiFetch(`/demo-generator/${jobId}`, { method: 'DELETE' }),
     },
+
+    // Impersonation
+    impersonate: (tenantId: string) =>
+      masterApiFetch<{ success: boolean; message: string; redirectUrl: string; tenantName: string }>(
+        '/auth/impersonate',
+        { method: 'POST', body: { tenantId } }
+      ),
+    exitImpersonation: () =>
+      masterApiFetch<{ success: boolean; message: string; redirectUrl: string }>(
+        '/auth/exit-impersonation',
+        { method: 'POST' }
+      ),
   },
 
   // Tenant Billing APIs (for tenants to view their own invoices)

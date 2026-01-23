@@ -11,6 +11,14 @@ export interface SessionData {
   firstName?: string;
   lastName?: string;
   isMasterAdmin?: boolean; // Platform-level admin with cross-tenant access
+
+  // Impersonation fields (only set when master admin is impersonating a tenant)
+  isImpersonating?: boolean;
+  impersonatedTenantId?: string;
+  impersonatedTenantName?: string;
+  originalMasterAdminId?: string;
+  originalMasterAdminEmail?: string;
+  impersonationStartedAt?: string; // ISO timestamp
 }
 
 // BUG-003 FIX: Validate SESSION_SECRET at startup
@@ -72,6 +80,14 @@ export async function setSession(data: SessionData): Promise<void> {
   session.firstName = data.firstName;
   session.lastName = data.lastName;
   session.isMasterAdmin = data.isMasterAdmin;
+
+  // Impersonation fields
+  session.isImpersonating = data.isImpersonating;
+  session.impersonatedTenantId = data.impersonatedTenantId;
+  session.impersonatedTenantName = data.impersonatedTenantName;
+  session.originalMasterAdminId = data.originalMasterAdminId;
+  session.originalMasterAdminEmail = data.originalMasterAdminEmail;
+  session.impersonationStartedAt = data.impersonationStartedAt;
 
   await session.save();
 }
@@ -166,4 +182,26 @@ export function canExportData(role: UserRole): boolean {
 // Master admin permissions
 export function isMasterAdminSession(session: SessionData | null): boolean {
   return session?.isMasterAdmin === true;
+}
+
+// Impersonation helpers
+export function isImpersonatingSession(session: SessionData | null): boolean {
+  return session?.isImpersonating === true;
+}
+
+export function getImpersonationInfo(session: SessionData | null): {
+  isImpersonating: boolean;
+  tenantName?: string;
+  originalAdminEmail?: string;
+  startedAt?: string;
+} | null {
+  if (!session?.isImpersonating) {
+    return null;
+  }
+  return {
+    isImpersonating: true,
+    tenantName: session.impersonatedTenantName,
+    originalAdminEmail: session.originalMasterAdminEmail,
+    startedAt: session.impersonationStartedAt,
+  };
 }

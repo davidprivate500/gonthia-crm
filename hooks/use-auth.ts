@@ -2,12 +2,13 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuthStore, User, Organization } from '@/stores/auth';
+import { useAuthStore, User, Organization, ImpersonationInfo } from '@/stores/auth';
 import { api } from '@/lib/api/client';
 
 interface AuthResponse {
   user: User;
   organization: Organization | null;
+  impersonation?: ImpersonationInfo | null;
 }
 
 interface ApiErrorResponse {
@@ -19,7 +20,7 @@ interface ApiErrorResponse {
 
 export function useAuth({ requireAuth = true } = {}) {
   const router = useRouter();
-  const { user, organization, isLoading, isAuthenticated, isMasterAdmin, setAuth, clearAuth, setLoading } = useAuthStore();
+  const { user, organization, isLoading, isAuthenticated, isMasterAdmin, impersonation, setAuth, clearAuth, setLoading } = useAuthStore();
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -27,7 +28,7 @@ export function useAuth({ requireAuth = true } = {}) {
         const response = await api.auth.me();
         const data = response.data as AuthResponse | undefined;
         if (data) {
-          setAuth(data.user, data.organization);
+          setAuth(data.user, data.organization, data.impersonation);
         }
       } catch {
         clearAuth();
@@ -101,6 +102,7 @@ export function useAuth({ requireAuth = true } = {}) {
     isLoading,
     isAuthenticated,
     isMasterAdmin,
+    impersonation,
     login,
     register,
     logout,
