@@ -47,36 +47,46 @@ export const invoiceQuerySchema = z.object({
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
 
+// Helper to allow empty string or valid value for optional fields
+const optionalString = (maxLength: number) =>
+  z.string().max(maxLength).optional().or(z.literal(''));
+
+const optionalEmail = () =>
+  z.string().email().max(255).optional().or(z.literal(''));
+
+const optionalUrl = (maxLength: number) =>
+  z.string().url().max(maxLength).optional().or(z.literal(''));
+
 // Platform settings schema
 export const platformSettingsSchema = z.object({
   companyName: z.string().min(1, 'Company name is required').max(255),
-  legalName: z.string().max(255).optional(),
-  registrationId: z.string().max(100).optional(),
-  vatId: z.string().max(50).optional(),
-  address: z.string().max(500).optional(),
-  city: z.string().max(100).optional(),
-  state: z.string().max(100).optional(),
-  postalCode: z.string().max(20).optional(),
-  country: z.string().max(100).optional(),
-  email: z.string().email().max(255).optional(),
-  phone: z.string().max(50).optional(),
-  website: z.string().url().max(500).optional().or(z.literal('')),
-  logoUrl: z.string().url().max(500).optional().or(z.literal('')),
+  legalName: optionalString(255),
+  registrationId: optionalString(100),
+  vatId: optionalString(50),
+  address: optionalString(500),
+  city: optionalString(100),
+  state: optionalString(100),
+  postalCode: optionalString(20),
+  country: optionalString(100),
+  email: optionalEmail(),
+  phone: optionalString(50),
+  website: optionalUrl(500),
+  logoUrl: optionalUrl(500),
   // Bank details
-  bankName: z.string().max(255).optional(),
-  bankAccountName: z.string().max(255).optional(),
-  bankAccountNumber: z.string().max(100).optional(),
-  bankRoutingNumber: z.string().max(50).optional(),
-  bankSwiftCode: z.string().max(20).optional(),
-  bankIban: z.string().max(50).optional(),
+  bankName: optionalString(255),
+  bankAccountName: optionalString(255),
+  bankAccountNumber: optionalString(100),
+  bankRoutingNumber: optionalString(50),
+  bankSwiftCode: optionalString(20),
+  bankIban: optionalString(50),
   // Crypto
-  cryptoWalletAddress: z.string().max(255).optional(),
-  cryptoNetwork: z.string().max(50).optional(),
+  cryptoWalletAddress: optionalString(255),
+  cryptoNetwork: optionalString(50),
   // Payment
-  paymentInstructions: z.string().max(2000).optional(),
+  paymentInstructions: optionalString(2000),
   // Invoice settings
   invoicePrefix: z.string().max(10).default('INV'),
-  invoiceFooterText: z.string().max(2000).optional(),
+  invoiceFooterText: optionalString(2000),
   defaultCurrency: z.string().length(3).default('USD'),
   defaultPaymentTermsDays: z.number().int().min(0).max(365).default(30),
 });
