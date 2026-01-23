@@ -11,10 +11,15 @@ export * from './types';
 // Config helpers
 import { DEFAULT_CONFIG, COUNTRY_DEFAULTS, type DemoGenerationConfig } from './types';
 
+// Input type that allows partial nested objects (from Zod schemas)
+type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+};
+
 /**
  * Fill in default values for a partial config
  */
-export function mergeWithDefaults(partial: Partial<DemoGenerationConfig>): DemoGenerationConfig {
+export function mergeWithDefaults(partial: DeepPartial<DemoGenerationConfig>): DemoGenerationConfig {
   const country = partial.country || 'US';
   const countryDefaults = COUNTRY_DEFAULTS[country] || COUNTRY_DEFAULTS.US;
 
@@ -88,7 +93,7 @@ function getDefaultStartDate(): string {
 /**
  * Estimate generation time based on config
  */
-export function estimateGenerationTime(config: Partial<DemoGenerationConfig>): number {
+export function estimateGenerationTime(config: DeepPartial<DemoGenerationConfig>): number {
   const merged = mergeWithDefaults(config);
   const totalRecords =
     merged.targets.leads +
