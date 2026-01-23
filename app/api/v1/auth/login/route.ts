@@ -123,14 +123,18 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({ data: responseData });
     response.headers.set('Set-Cookie', cookieHeader);
     return response;
-  } catch (error) {
+  } catch (error: any) {
     // TEMPORARY: Return actual error for debugging (remove in production)
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorName = error instanceof Error ? error.name : 'Unknown';
+    const errorCode = error?.code || 'no_code';
+    const errorCause = error?.cause ? String(error.cause) : 'no_cause';
 
     console.error('Login error details:', {
       message: errorMessage,
       name: errorName,
+      code: errorCode,
+      cause: errorCause,
       stack: error instanceof Error ? error.stack : undefined,
     });
 
@@ -142,9 +146,13 @@ export async function POST(request: NextRequest) {
         debug: {
           errorMessage,
           errorName,
+          errorCode,
+          errorCause,
           hasSessionSecret: !!process.env.SESSION_SECRET,
           sessionSecretLength: process.env.SESSION_SECRET?.length || 0,
           hasDatabaseUrl: !!process.env.DATABASE_URL,
+          databaseUrlStart: process.env.DATABASE_URL?.substring(0, 50) + '...',
+          nodeEnv: process.env.NODE_ENV,
         }
       }
     }, { status: 500 });
