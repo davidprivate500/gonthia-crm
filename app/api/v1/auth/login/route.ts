@@ -124,13 +124,29 @@ export async function POST(request: NextRequest) {
     response.headers.set('Set-Cookie', cookieHeader);
     return response;
   } catch (error) {
-    // BUG-027 FIX: Sanitized error response
-    // Log more details for debugging
+    // TEMPORARY: Return actual error for debugging (remove in production)
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorName = error instanceof Error ? error.name : 'Unknown';
+
     console.error('Login error details:', {
-      message: error instanceof Error ? error.message : String(error),
-      name: error instanceof Error ? error.name : 'Unknown',
+      message: errorMessage,
+      name: errorName,
       stack: error instanceof Error ? error.stack : undefined,
     });
-    return safeInternalError(error, 'auth.login');
+
+    // Return error details for debugging
+    return NextResponse.json({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+        debug: {
+          errorMessage,
+          errorName,
+          hasSessionSecret: !!process.env.SESSION_SECRET,
+          sessionSecretLength: process.env.SESSION_SECRET?.length || 0,
+          hasDatabaseUrl: !!process.env.DATABASE_URL,
+        }
+      }
+    }, { status: 500 });
   }
 }
