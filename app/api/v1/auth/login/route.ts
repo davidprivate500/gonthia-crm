@@ -125,6 +125,12 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     // BUG-027 FIX: Sanitized error response
+    // Log more details for debugging
+    console.error('Login error details:', {
+      message: error instanceof Error ? error.message : String(error),
+      name: error instanceof Error ? error.name : 'Unknown',
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return safeInternalError(error, 'auth.login');
   }
 }
