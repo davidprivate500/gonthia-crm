@@ -1,15 +1,17 @@
 // Demo Generator Module - Main Entry Point
 
-export { DemoGenerator } from './engine/generator';
+// Export types first to avoid circular dependency issues
+export * from './types';
+
+// Config helpers - import after types are exported
+import { DEFAULT_CONFIG, COUNTRY_DEFAULTS, type DemoGenerationConfig } from './types';
+
+// Export engine components
 export { SeededRNG, generateSeed } from './engine/rng';
 export { GrowthPlanner } from './engine/growth-planner';
 export { getProvider, getSupportedCountries, hasProvider } from './localization';
 export { getTemplate, getAllTemplates, getTemplateIds } from './templates';
-
-export * from './types';
-
-// Config helpers
-import { DEFAULT_CONFIG, COUNTRY_DEFAULTS, type DemoGenerationConfig } from './types';
+export { DemoGenerator } from './engine/generator';
 
 // Input type that allows partial nested objects (from Zod schemas)
 type DeepPartial<T> = {
