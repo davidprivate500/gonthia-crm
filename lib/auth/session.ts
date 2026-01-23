@@ -21,11 +21,12 @@ export interface SessionData {
   impersonationStartedAt?: string; // ISO timestamp
 }
 
-// BUG-003 FIX: Validate SESSION_SECRET at startup
+// BUG-003 FIX: Validate SESSION_SECRET lazily (not at module load time)
 function getSessionSecret(): string {
   const secret = process.env.SESSION_SECRET;
 
   if (!secret) {
+    console.error('SESSION_SECRET is not set! Current env keys:', Object.keys(process.env).filter(k => !k.startsWith('npm_')).join(', '));
     throw new Error(
       'SESSION_SECRET environment variable is required. ' +
       'Generate a secure secret with: openssl rand -hex 32'
@@ -33,6 +34,7 @@ function getSessionSecret(): string {
   }
 
   if (secret.length < 32) {
+    console.error('SESSION_SECRET is too short:', secret.length, 'chars');
     throw new Error(
       'SESSION_SECRET must be at least 32 characters long. ' +
       'Current length: ' + secret.length
@@ -42,17 +44,31 @@ function getSessionSecret(): string {
   return secret;
 }
 
+// Lazy session options - password is resolved at runtime, not module load time
+export function getSessionOptions(): SessionOptions {
+  return {
+    password: getSessionSecret(),
+    cookieName: 'gonthia-session',
+    cookieOptions: {
+      path: '/',
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
+      sameSite: 'lax' as const,
+      maxAge: 60 * 60 * 24 * 7, // 7 days in seconds
+    },
+  };
+}
+
+// Keep for backwards compatibility but make it a getter
 export const sessionOptions: SessionOptions = {
-  password: getSessionSecret(),
+  get password() {
+    return getSessionSecret();
+  },
   cookieName: 'gonthia-session',
   cookieOptions: {
-    // Explicit path ensures cookie is valid for all routes
     path: '/',
-    // Only require secure in production (HTTPS)
-    // In dev, leaving as false allows both HTTP and HTTPS
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    // Use 'lax' for reasonable CSRF protection while allowing normal navigation
     sameSite: 'lax' as const,
     maxAge: 60 * 60 * 24 * 7, // 7 days in seconds
   },
