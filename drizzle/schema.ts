@@ -410,8 +410,8 @@ export const invoiceLineItems = pgTable('invoice_line_items', {
 // Demo generation jobs - tracks each demo tenant generation
 export const demoGenerationJobs = pgTable('demo_generation_jobs', {
   id: uuid('id').defaultRandom().primaryKey(),
-  // Creator (master admin who initiated)
-  createdById: uuid('created_by_id').notNull().references(() => users.id, { onDelete: 'set null' }),
+  // Creator (master admin who initiated) - nullable to allow job records to survive user deletion
+  createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
   // Job status
   status: demoJobStatusEnum('status').notNull().default('pending'),
   // Full configuration used for generation (JSON)
