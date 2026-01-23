@@ -279,6 +279,19 @@ export const api = {
       delete: (invoiceId: string) =>
         masterApiFetch(`/invoices/${invoiceId}`, { method: 'DELETE' }),
     },
+
+    // Demo Generator
+    demoGenerator: {
+      list: (params?: Record<string, string | number | undefined>) =>
+        masterApiFetch(`/demo-generator?${buildSearchParams(params)}`),
+      get: (jobId: string) => masterApiFetch(`/demo-generator/${jobId}`),
+      create: (data: Record<string, unknown>) =>
+        masterApiFetch('/demo-generator', { method: 'POST', body: data }),
+      preview: (data: Record<string, unknown>) =>
+        masterApiFetch('/demo-generator/preview', { method: 'POST', body: data }),
+      delete: (jobId: string) =>
+        masterApiFetch(`/demo-generator/${jobId}`, { method: 'DELETE' }),
+    },
   },
 
   // Tenant Billing APIs (for tenants to view their own invoices)

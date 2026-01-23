@@ -95,7 +95,6 @@ export default function DemoGeneratorPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatingJobId, setGeneratingJobId] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -114,7 +113,7 @@ export default function DemoGeneratorPage() {
   // Load jobs
   const loadJobs = async () => {
     try {
-      const response = await api.get<{ data: DemoJob[] }>('/api/master/demo-generator');
+      const response = await api.master.demoGenerator.list();
       if (response.data) {
         setJobs(response.data as DemoJob[]);
       }
@@ -151,7 +150,7 @@ export default function DemoGeneratorPage() {
   const handleGenerate = async () => {
     setIsGenerating(true);
     try {
-      const response = await api.post<{ data: { jobId: string } }>('/api/master/demo-generator', {
+      const response = await api.master.demoGenerator.create({
         tenantName: formData.tenantName || undefined,
         country: formData.country,
         industry: formData.industry,
@@ -168,7 +167,6 @@ export default function DemoGeneratorPage() {
       });
 
       if (response.data) {
-        setGeneratingJobId((response.data as { jobId: string }).jobId);
         setIsDialogOpen(false);
         loadJobs();
       }
@@ -186,7 +184,7 @@ export default function DemoGeneratorPage() {
     }
 
     try {
-      await api.delete(`/api/master/demo-generator/${jobId}`);
+      await api.master.demoGenerator.delete(jobId);
       loadJobs();
     } catch (error) {
       console.error('Failed to delete:', error);

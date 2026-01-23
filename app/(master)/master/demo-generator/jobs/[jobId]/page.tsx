@@ -96,7 +96,7 @@ export default function DemoJobDetailPage() {
 
   const loadJob = async () => {
     try {
-      const response = await api.get<{ data: DemoJobDetail }>(`/api/master/demo-generator/${jobId}`);
+      const response = await api.master.demoGenerator.get(jobId);
       if (response.data) {
         setJob(response.data as DemoJobDetail);
       }
@@ -127,7 +127,7 @@ export default function DemoJobDetailPage() {
 
     setIsDeleting(true);
     try {
-      await api.delete(`/api/master/demo-generator/${jobId}`);
+      await api.master.demoGenerator.delete(jobId);
       router.push('/master/demo-generator');
     } catch (error) {
       console.error('Failed to delete:', error);
