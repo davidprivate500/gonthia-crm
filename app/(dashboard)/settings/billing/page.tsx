@@ -49,7 +49,7 @@ interface Invoice {
   currency: string;
   issueDate: string | null;
   dueDate: string | null;
-  totalAmount: string;
+  total: string;
   createdAt: string;
   lineItems: LineItem[];
 }
@@ -202,7 +202,7 @@ export default function BillingPage() {
                                 : '-'}
                             </TableCell>
                             <TableCell className="text-right font-semibold">
-                              {invoice.currency} {parseFloat(invoice.totalAmount).toFixed(2)}
+                              {invoice.currency} {parseFloat(invoice.total).toFixed(2)}
                             </TableCell>
                           </TableRow>
                         ))}

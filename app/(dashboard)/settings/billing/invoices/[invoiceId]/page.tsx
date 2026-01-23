@@ -38,7 +38,7 @@ interface Invoice {
   subtotal: string;
   taxRate: string | null;
   taxAmount: string | null;
-  totalAmount: string;
+  total: string;
   notes: string | null;
   issuerSnapshot: Record<string, unknown> | null;
   clientSnapshot: Record<string, unknown> | null;
@@ -255,7 +255,7 @@ export default function InvoiceDetailPage() {
               <div className="flex justify-end gap-8 text-xl font-bold pt-2 border-t">
                 <span>Total:</span>
                 <span className="w-32 text-right">
-                  {invoice.currency} {parseFloat(invoice.totalAmount).toFixed(2)}
+                  {invoice.currency} {parseFloat(invoice.total).toFixed(2)}
                 </span>
               </div>
             </div>

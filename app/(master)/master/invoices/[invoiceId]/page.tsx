@@ -55,7 +55,7 @@ interface Invoice {
   subtotal: string;
   taxRate: string | null;
   taxAmount: string | null;
-  totalAmount: string;
+  total: string;
   notes: string | null;
   internalNotes: string | null;
   issuerSnapshot: Record<string, unknown> | null;
@@ -274,7 +274,7 @@ export default function InvoiceDetailPage() {
             </CardHeader>
             <CardContent>
               <span className="text-2xl font-bold">
-                {invoice.currency} {parseFloat(invoice.totalAmount).toFixed(2)}
+                {invoice.currency} {parseFloat(invoice.total).toFixed(2)}
               </span>
             </CardContent>
           </Card>
@@ -330,7 +330,7 @@ export default function InvoiceDetailPage() {
               <div className="flex justify-end gap-8 text-lg font-bold">
                 <span>Total:</span>
                 <span className="w-32 text-right">
-                  {invoice.currency} {parseFloat(invoice.totalAmount).toFixed(2)}
+                  {invoice.currency} {parseFloat(invoice.total).toFixed(2)}
                 </span>
               </div>
             </div>
