@@ -332,3 +332,96 @@ export interface PlanValidationResult {
 }
 
 // Runtime defaults are in ./defaults.ts to avoid circular dependencies
+
+// ============================================================================
+// PATCH TYPES (for incremental updates to existing demo tenants)
+// ============================================================================
+
+export type PatchMode = 'additive' | 'reconcile';
+export type PatchPlanType = 'targets' | 'deltas';
+
+export interface PatchMetrics {
+  leadsCreated?: number;
+  contactsCreated?: number;
+  companiesCreated?: number;
+  dealsCreated?: number;
+  closedWonCount?: number;
+  closedWonValue?: number;
+  pipelineAddedValue?: number;
+  activitiesCreated?: number;
+}
+
+export interface PatchMonthTarget {
+  month: string; // YYYY-MM
+  metrics: PatchMetrics;
+}
+
+export interface PatchPlan {
+  mode: PatchMode;
+  planType: PatchPlanType;
+  months: PatchMonthTarget[];
+  tolerances?: ToleranceConfig;
+  seed?: string;
+}
+
+export interface MonthlyKpiSnapshot {
+  month: string;
+  metrics: Required<PatchMetrics>;
+  snapshotAt: string;
+}
+
+export interface KpiDiffEntry {
+  metric: keyof PatchMetrics;
+  before: number;
+  after: number;
+  delta: number;
+  deltaPercent: number;
+  target: number;
+  passed: boolean;
+}
+
+export interface MonthlyKpiDiff {
+  month: string;
+  entries: KpiDiffEntry[];
+  allPassed: boolean;
+}
+
+export interface PatchDiffReport {
+  months: MonthlyKpiDiff[];
+  overallPassed: boolean;
+  totalMetrics: number;
+  passedMetrics: number;
+  failedMetrics: number;
+}
+
+export interface PatchPreview {
+  computedDeltas: PatchMonthTarget[];
+  estimatedRecords: {
+    contacts: number;
+    companies: number;
+    deals: number;
+    activities: number;
+  };
+  warnings: string[];
+  blockers: string[];
+  feasible: boolean;
+}
+
+export interface PatchJobMetrics {
+  recordsCreated: number;
+  recordsModified: number;
+  recordsDeleted: number;
+  byEntity: {
+    contacts: { created: number; modified: number; deleted: number };
+    companies: { created: number; modified: number; deleted: number };
+    deals: { created: number; modified: number; deleted: number };
+    activities: { created: number; modified: number; deleted: number };
+  };
+}
+
+export interface PatchValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  preview?: PatchPreview;
+}

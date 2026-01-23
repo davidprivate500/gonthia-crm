@@ -94,6 +94,10 @@ export const companies = pgTable('companies', {
   phone: varchar('phone', { length: 50 }),
   website: varchar('website', { length: 500 }),
   notes: text('notes'),
+  // Demo provenance fields
+  demoGenerated: boolean('demo_generated').default(false),
+  demoJobId: uuid('demo_job_id'),
+  demoSourceMonth: varchar('demo_source_month', { length: 7 }), // YYYY-MM format
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -101,6 +105,8 @@ export const companies = pgTable('companies', {
   index('idx_companies_tenant_id').on(table.tenantId),
   index('idx_companies_owner_id').on(table.ownerId),
   index('idx_companies_deleted_at').on(table.deletedAt),
+  index('idx_companies_demo_generated').on(table.tenantId, table.demoGenerated),
+  index('idx_companies_demo_job').on(table.demoJobId),
 ]);
 
 // Contacts table
@@ -114,6 +120,10 @@ export const contacts = pgTable('contacts', {
   companyId: uuid('company_id').references(() => companies.id, { onDelete: 'set null' }),
   ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
   status: contactStatusEnum('status').notNull().default('lead'),
+  // Demo provenance fields
+  demoGenerated: boolean('demo_generated').default(false),
+  demoJobId: uuid('demo_job_id'),
+  demoSourceMonth: varchar('demo_source_month', { length: 7 }), // YYYY-MM format
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -124,6 +134,8 @@ export const contacts = pgTable('contacts', {
   index('idx_contacts_deleted_at').on(table.deletedAt),
   index('idx_contacts_email').on(table.email),
   index('idx_contacts_status').on(table.status),
+  index('idx_contacts_demo_generated').on(table.tenantId, table.demoGenerated),
+  index('idx_contacts_demo_job').on(table.demoJobId),
 ]);
 
 // Contact tags junction table
@@ -168,6 +180,10 @@ export const deals = pgTable('deals', {
   expectedCloseDate: timestamp('expected_close_date', { withTimezone: true }),
   probability: integer('probability'),
   notes: text('notes'),
+  // Demo provenance fields
+  demoGenerated: boolean('demo_generated').default(false),
+  demoJobId: uuid('demo_job_id'),
+  demoSourceMonth: varchar('demo_source_month', { length: 7 }), // YYYY-MM format
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -179,6 +195,8 @@ export const deals = pgTable('deals', {
   index('idx_deals_company_id').on(table.companyId),
   index('idx_deals_deleted_at').on(table.deletedAt),
   index('idx_deals_position').on(table.stageId, table.position),
+  index('idx_deals_demo_generated').on(table.tenantId, table.demoGenerated),
+  index('idx_deals_demo_job').on(table.demoJobId),
 ]);
 
 // Activities table
@@ -195,6 +213,10 @@ export const activities = pgTable('activities', {
   scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),
   durationMinutes: integer('duration_minutes'),
+  // Demo provenance fields
+  demoGenerated: boolean('demo_generated').default(false),
+  demoJobId: uuid('demo_job_id'),
+  demoSourceMonth: varchar('demo_source_month', { length: 7 }), // YYYY-MM format
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -206,6 +228,8 @@ export const activities = pgTable('activities', {
   index('idx_activities_created_by_id').on(table.createdById),
   index('idx_activities_scheduled_at').on(table.scheduledAt),
   index('idx_activities_deleted_at').on(table.deletedAt),
+  index('idx_activities_demo_generated').on(table.tenantId, table.demoGenerated),
+  index('idx_activities_demo_job').on(table.demoJobId),
 ]);
 
 // API Keys table
@@ -411,6 +435,10 @@ export const invoiceLineItems = pgTable('invoice_line_items', {
 // Demo generation mode enum
 export const demoGenerationModeEnum = pgEnum('demo_generation_mode', ['growth-curve', 'monthly-plan']);
 
+// Demo patch enums
+export const demoPatchModeEnum = pgEnum('demo_patch_mode', ['additive', 'reconcile']);
+export const demoPatchPlanTypeEnum = pgEnum('demo_patch_plan_type', ['targets', 'deltas']);
+
 // Demo generation jobs - tracks each demo tenant generation
 export const demoGenerationJobs = pgTable('demo_generation_jobs', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -477,6 +505,50 @@ export const demoTenantMetadata = pgTable('demo_tenant_metadata', {
   index('idx_demo_metadata_country').on(table.country),
   index('idx_demo_metadata_industry').on(table.industry),
   index('idx_demo_metadata_job').on(table.generationJobId),
+]);
+
+// Demo patch jobs - tracks incremental updates to demo tenants
+export const demoPatchJobs = pgTable('demo_patch_jobs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  // Target tenant
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  // Link to original generation job (optional)
+  originalJobId: uuid('original_job_id').references(() => demoGenerationJobs.id, { onDelete: 'set null' }),
+  // Creator (master admin who initiated)
+  createdById: uuid('created_by_id').notNull().references(() => users.id, { onDelete: 'set null' }),
+  // Patch configuration
+  mode: demoPatchModeEnum('mode').notNull().default('additive'),
+  planType: demoPatchPlanTypeEnum('plan_type').notNull().default('deltas'),
+  patchPlanJson: json('patch_plan_json').notNull(),
+  seed: varchar('seed', { length: 64 }).notNull(),
+  rangeStartMonth: varchar('range_start_month', { length: 7 }).notNull(), // YYYY-MM
+  rangeEndMonth: varchar('range_end_month', { length: 7 }).notNull(), // YYYY-MM
+  toleranceConfig: json('tolerance_config'),
+  // KPI tracking
+  beforeKpisJson: json('before_kpis_json'),
+  afterKpisJson: json('after_kpis_json'),
+  diffReportJson: json('diff_report_json'),
+  // Execution status
+  status: demoJobStatusEnum('status').notNull().default('pending'),
+  progress: integer('progress').notNull().default(0), // 0-100
+  currentStep: varchar('current_step', { length: 100 }),
+  logs: json('logs').default([]),
+  // Results
+  metricsJson: json('metrics_json'), // { recordsCreated, recordsModified, recordsDeleted, byEntity }
+  // Error info (if failed)
+  errorMessage: text('error_message'),
+  errorStack: text('error_stack'),
+  // Timestamps
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_patch_jobs_tenant').on(table.tenantId),
+  index('idx_patch_jobs_status').on(table.status),
+  index('idx_patch_jobs_created_at').on(table.createdAt),
+  index('idx_patch_jobs_original_job').on(table.originalJobId),
+  index('idx_patch_jobs_created_by').on(table.createdById),
 ]);
 
 // Relations
@@ -594,6 +666,12 @@ export const demoTenantMetadataRelations = relations(demoTenantMetadata, ({ one 
   generationJob: one(demoGenerationJobs, { fields: [demoTenantMetadata.generationJobId], references: [demoGenerationJobs.id] }),
 }));
 
+export const demoPatchJobsRelations = relations(demoPatchJobs, ({ one }) => ({
+  tenant: one(tenants, { fields: [demoPatchJobs.tenantId], references: [tenants.id] }),
+  originalJob: one(demoGenerationJobs, { fields: [demoPatchJobs.originalJobId], references: [demoGenerationJobs.id] }),
+  createdBy: one(users, { fields: [demoPatchJobs.createdById], references: [users.id] }),
+}));
+
 // Type exports
 export type Tenant = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;
@@ -630,4 +708,8 @@ export type DemoGenerationJob = typeof demoGenerationJobs.$inferSelect;
 export type NewDemoGenerationJob = typeof demoGenerationJobs.$inferInsert;
 export type DemoTenantMetadata = typeof demoTenantMetadata.$inferSelect;
 export type NewDemoTenantMetadata = typeof demoTenantMetadata.$inferInsert;
+export type DemoPatchJob = typeof demoPatchJobs.$inferSelect;
+export type NewDemoPatchJob = typeof demoPatchJobs.$inferInsert;
 export type DemoJobStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type DemoPatchMode = 'additive' | 'reconcile';
+export type DemoPatchPlanType = 'targets' | 'deltas';

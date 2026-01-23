@@ -293,6 +293,15 @@ export const api = {
         masterApiFetch('/demo-generator/validate-plan', { method: 'POST', body: data }),
       delete: (jobId: string) =>
         masterApiFetch(`/demo-generator/${jobId}`, { method: 'DELETE' }),
+      // Patch endpoints
+      getTenantKpis: (tenantId: string, params: { from: string; to: string }) =>
+        masterApiFetch(`/demo-generator/tenants/${tenantId}/kpis?${buildSearchParams(params)}`),
+      validatePatch: (tenantId: string, data: Record<string, unknown>) =>
+        masterApiFetch(`/demo-generator/tenants/${tenantId}/patch/validate`, { method: 'POST', body: data }),
+      applyPatch: (tenantId: string, data: Record<string, unknown>) =>
+        masterApiFetch(`/demo-generator/tenants/${tenantId}/patch/apply`, { method: 'POST', body: data }),
+      getPatchJob: (jobId: string) =>
+        masterApiFetch(`/demo-generator/patch-jobs/${jobId}`),
     },
 
     // Impersonation
