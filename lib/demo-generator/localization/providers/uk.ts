@@ -1,4 +1,4 @@
-import { BaseLocalizationProvider } from '../index';
+import { BaseLocalizationProvider } from '../base';
 
 export class UKProvider extends BaseLocalizationProvider {
   country = 'GB';
