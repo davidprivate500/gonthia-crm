@@ -14,6 +14,8 @@ export const auditActionEnum = pgEnum('audit_action', [
 export const importStatusEnum = pgEnum('import_status', ['pending', 'processing', 'completed', 'failed']);
 // Invoice status enum
 export const invoiceStatusEnum = pgEnum('invoice_status', ['draft', 'issued', 'paid', 'void', 'overdue']);
+// Demo generation job status enum
+export const demoJobStatusEnum = pgEnum('demo_job_status', ['pending', 'running', 'completed', 'failed']);
 
 // Tenants table
 export const tenants = pgTable('tenants', {
@@ -401,6 +403,65 @@ export const invoiceLineItems = pgTable('invoice_line_items', {
   index('idx_invoice_line_items_position').on(table.invoiceId, table.position),
 ]);
 
+// ============================================================================
+// DEMO GENERATOR TABLES
+// ============================================================================
+
+// Demo generation jobs - tracks each demo tenant generation
+export const demoGenerationJobs = pgTable('demo_generation_jobs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  // Creator (master admin who initiated)
+  createdById: uuid('created_by_id').notNull().references(() => users.id, { onDelete: 'set null' }),
+  // Job status
+  status: demoJobStatusEnum('status').notNull().default('pending'),
+  // Full configuration used for generation (JSON)
+  config: json('config').notNull(),
+  // Seed for deterministic generation
+  seed: varchar('seed', { length: 64 }).notNull(),
+  // Result: the created tenant
+  createdTenantId: uuid('created_tenant_id').references(() => tenants.id, { onDelete: 'set null' }),
+  // Progress tracking
+  progress: integer('progress').notNull().default(0), // 0-100
+  currentStep: varchar('current_step', { length: 100 }),
+  logs: json('logs').default([]),
+  // Metrics (actual generated counts)
+  metrics: json('metrics'),
+  // Error info (if failed)
+  errorMessage: text('error_message'),
+  errorStack: text('error_stack'),
+  // Timestamps
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_demo_jobs_status').on(table.status),
+  index('idx_demo_jobs_created_by').on(table.createdById),
+  index('idx_demo_jobs_created_at').on(table.createdAt),
+  index('idx_demo_jobs_created_tenant').on(table.createdTenantId),
+]);
+
+// Demo tenant metadata - additional info for demo-generated tenants
+export const demoTenantMetadata = pgTable('demo_tenant_metadata', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().unique().references(() => tenants.id, { onDelete: 'cascade' }),
+  generationJobId: uuid('generation_job_id').notNull().references(() => demoGenerationJobs.id, { onDelete: 'set null' }),
+  // Denormalized fields for quick filtering
+  country: varchar('country', { length: 2 }).notNull(),
+  industry: varchar('industry', { length: 50 }).notNull(),
+  startDate: timestamp('start_date', { withTimezone: true }).notNull(),
+  // Flags
+  isDemoGenerated: boolean('is_demo_generated').notNull().default(true),
+  excludedFromAnalytics: boolean('excluded_from_analytics').notNull().default(true),
+  // Timestamps
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('idx_demo_metadata_tenant').on(table.tenantId),
+  index('idx_demo_metadata_country').on(table.country),
+  index('idx_demo_metadata_industry').on(table.industry),
+  index('idx_demo_metadata_job').on(table.generationJobId),
+]);
+
 // Relations
 export const tenantsRelations = relations(tenants, ({ one, many }) => ({
   users: many(users),
@@ -506,6 +567,16 @@ export const invoiceLineItemsRelations = relations(invoiceLineItems, ({ one }) =
   invoice: one(invoices, { fields: [invoiceLineItems.invoiceId], references: [invoices.id] }),
 }));
 
+export const demoGenerationJobsRelations = relations(demoGenerationJobs, ({ one }) => ({
+  createdBy: one(users, { fields: [demoGenerationJobs.createdById], references: [users.id] }),
+  tenant: one(tenants, { fields: [demoGenerationJobs.createdTenantId], references: [tenants.id] }),
+}));
+
+export const demoTenantMetadataRelations = relations(demoTenantMetadata, ({ one }) => ({
+  tenant: one(tenants, { fields: [demoTenantMetadata.tenantId], references: [tenants.id] }),
+  generationJob: one(demoGenerationJobs, { fields: [demoTenantMetadata.generationJobId], references: [demoGenerationJobs.id] }),
+}));
+
 // Type exports
 export type Tenant = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;
@@ -538,3 +609,8 @@ export type NewInvoice = typeof invoices.$inferInsert;
 export type InvoiceLineItem = typeof invoiceLineItems.$inferSelect;
 export type NewInvoiceLineItem = typeof invoiceLineItems.$inferInsert;
 export type InvoiceStatus = 'draft' | 'issued' | 'paid' | 'void' | 'overdue';
+export type DemoGenerationJob = typeof demoGenerationJobs.$inferSelect;
+export type NewDemoGenerationJob = typeof demoGenerationJobs.$inferInsert;
+export type DemoTenantMetadata = typeof demoTenantMetadata.$inferSelect;
+export type NewDemoTenantMetadata = typeof demoTenantMetadata.$inferInsert;
+export type DemoJobStatus = 'pending' | 'running' | 'completed' | 'failed';

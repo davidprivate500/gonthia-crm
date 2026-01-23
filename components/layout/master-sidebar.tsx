@@ -9,12 +9,14 @@ import {
   Settings,
   LogOut,
   Shield,
+  Wand2,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 
 const navigation = [
   { name: 'Tenants', href: '/master/tenants', icon: Building2 },
+  { name: 'Demo Generator', href: '/master/demo-generator', icon: Wand2 },
   { name: 'Issuer Settings', href: '/master/settings', icon: Settings },
 ];
 
