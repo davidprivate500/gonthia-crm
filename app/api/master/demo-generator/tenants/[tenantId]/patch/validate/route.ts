@@ -73,10 +73,38 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Generate preview
-    const preview = generatePreview(plan, currentKpis, deltas);
+    const internalPreview = generatePreview(plan, currentKpis, deltas);
 
     // Add validation warnings to preview
-    preview.warnings.push(...validation.warnings);
+    internalPreview.warnings.push(...validation.warnings);
+
+    // Compute totals for UI
+    const totalRecordsToCreate =
+      internalPreview.estimatedRecords.contacts +
+      internalPreview.estimatedRecords.companies +
+      internalPreview.estimatedRecords.deals +
+      internalPreview.estimatedRecords.activities;
+
+    // Estimate duration: ~100 records/second + 2 seconds per month overhead
+    const estimatedDurationSeconds = Math.max(10, Math.ceil(totalRecordsToCreate / 100) + deltas.length * 2);
+
+    // Transform preview for UI
+    const preview = {
+      months: deltas.map(d => ({
+        month: d.month,
+        current: currentKpis.find(k => k.month === d.month)?.metrics || {},
+        target: d.metrics,
+        deltas: Object.fromEntries(
+          Object.entries(d.metrics).map(([key, value]) => [
+            key,
+            { delta: value ?? 0, canApply: true }
+          ])
+        ),
+      })),
+      totalRecordsToCreate,
+      estimatedDurationSeconds,
+      warnings: internalPreview.warnings,
+    };
 
     return successResponse({
       valid: true,
