@@ -14,6 +14,9 @@ import type {
   MonthlyTargets, MonthlyMetrics, LogEntry, LocalizationProvider, IndustryTemplate,
 } from '../types';
 
+// Transaction type extracted from db.transaction callback parameter
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 const BATCH_SIZE = 500;
 const DEFAULT_PASSWORD = 'Demo123!'; // Default password for all demo users
 
@@ -135,7 +138,7 @@ export class DemoGenerator {
   /**
    * Create the tenant
    */
-  private async createTenant(tx: typeof db): Promise<void> {
+  private async createTenant(tx: DbTransaction): Promise<void> {
     const [tenant] = await tx.insert(tenants).values({
       name: this.config.tenantName,
     }).returning();
@@ -147,7 +150,7 @@ export class DemoGenerator {
   /**
    * Create team members
    */
-  private async createUsers(tx: typeof db): Promise<void> {
+  private async createUsers(tx: DbTransaction): Promise<void> {
     const passwordHash = await hashPassword(DEFAULT_PASSWORD);
     const teamSize = this.config.teamSize;
 
@@ -201,7 +204,7 @@ export class DemoGenerator {
   /**
    * Create pipeline stages from template
    */
-  private async createPipeline(tx: typeof db): Promise<void> {
+  private async createPipeline(tx: DbTransaction): Promise<void> {
     const stages = this.template.pipeline.stages;
 
     const stagesToCreate = stages.map((stage, index) => ({
@@ -226,7 +229,7 @@ export class DemoGenerator {
   /**
    * Create tags
    */
-  private async createTags(tx: typeof db): Promise<void> {
+  private async createTags(tx: DbTransaction): Promise<void> {
     const tagDefs = [
       { name: 'High Value', color: '#22c55e' },
       { name: 'Enterprise', color: '#3b82f6' },
@@ -252,7 +255,7 @@ export class DemoGenerator {
   /**
    * Create companies
    */
-  private async createCompanies(tx: typeof db): Promise<void> {
+  private async createCompanies(tx: DbTransaction): Promise<void> {
     const rng = this.rng.child('companies');
     const companiesToCreate = [];
 
@@ -296,7 +299,7 @@ export class DemoGenerator {
   /**
    * Create contacts
    */
-  private async createContacts(tx: typeof db): Promise<void> {
+  private async createContacts(tx: DbTransaction): Promise<void> {
     const rng = this.rng.child('contacts');
     const contactsToCreate = [];
     const { dropOffRate } = this.config.realism;
@@ -350,7 +353,7 @@ export class DemoGenerator {
   /**
    * Create deals
    */
-  private async createDeals(tx: typeof db): Promise<void> {
+  private async createDeals(tx: DbTransaction): Promise<void> {
     const rng = this.rng.child('deals');
     const dealsToCreate = [];
     const { whaleRatio } = this.config.realism;
@@ -432,7 +435,7 @@ export class DemoGenerator {
   /**
    * Create activities
    */
-  private async createActivities(tx: typeof db): Promise<void> {
+  private async createActivities(tx: DbTransaction): Promise<void> {
     const rng = this.rng.child('activities');
     const activitiesToCreate = [];
     const { callToEmailRatio, avgPerContact } = this.template.activities;
@@ -495,7 +498,7 @@ export class DemoGenerator {
   /**
    * Create demo tenant metadata
    */
-  private async createDemoMetadata(tx: typeof db): Promise<void> {
+  private async createDemoMetadata(tx: DbTransaction): Promise<void> {
     await tx.insert(demoTenantMetadata).values({
       tenantId: this.tenantId,
       generationJobId: this.jobId,
