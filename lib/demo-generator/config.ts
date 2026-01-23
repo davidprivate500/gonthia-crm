@@ -1,6 +1,7 @@
 // Demo Generator Config Helpers
 
-import { DEFAULT_CONFIG, COUNTRY_DEFAULTS, type DemoGenerationConfig } from './types';
+import type { DemoGenerationConfig } from './types';
+import { DEFAULT_CONFIG, COUNTRY_DEFAULTS } from './defaults';
 
 // Input type that allows partial nested objects (from Zod schemas)
 type DeepPartial<T> = {
