@@ -47,15 +47,15 @@ export const invoiceQuerySchema = z.object({
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
 
-// Helper to allow empty string or valid value for optional fields
+// Helper to allow empty string, null, or undefined for optional fields
 const optionalString = (maxLength: number) =>
-  z.string().max(maxLength).optional().or(z.literal(''));
+  z.string().max(maxLength).nullable().optional();
 
 const optionalEmail = () =>
-  z.string().email().max(255).optional().or(z.literal(''));
+  z.union([z.string().email().max(255), z.literal('')]).nullable().optional();
 
 const optionalUrl = (maxLength: number) =>
-  z.string().url().max(maxLength).optional().or(z.literal(''));
+  z.union([z.string().url().max(maxLength), z.literal('')]).nullable().optional();
 
 // Platform settings schema
 export const platformSettingsSchema = z.object({
