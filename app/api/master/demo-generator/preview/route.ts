@@ -2,7 +2,8 @@ import { NextRequest } from 'next/server';
 import { requireMasterAdmin } from '@/lib/auth/middleware';
 import { previewSchema } from '@/validations/demo-generator';
 import { successResponse, validationError, formatZodErrors, internalError } from '@/lib/api/response';
-import { mergeWithDefaults, GrowthPlanner, estimateGenerationTime } from '@/lib/demo-generator';
+import { mergeWithDefaults, estimateGenerationTime } from '@/lib/demo-generator/config';
+import { GrowthPlanner } from '@/lib/demo-generator/engine/growth-planner';
 
 // POST /api/master/demo-generator/preview - Preview generation metrics
 export async function POST(request: NextRequest) {

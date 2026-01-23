@@ -8,7 +8,9 @@ import {
 } from '@/lib/api/response';
 import { eq, desc, asc, ilike, and, sql } from 'drizzle-orm';
 import { toSearchPattern } from '@/lib/search';
-import { DemoGenerator, mergeWithDefaults, generateSeed } from '@/lib/demo-generator';
+import { DemoGenerator } from '@/lib/demo-generator/engine/generator';
+import { mergeWithDefaults } from '@/lib/demo-generator/config';
+import { generateSeed } from '@/lib/demo-generator/engine/rng';
 
 // POST /api/master/demo-generator - Start a new demo generation
 export async function POST(request: NextRequest) {
