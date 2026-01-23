@@ -107,7 +107,153 @@ export const listJobsQuerySchema = z.object({
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
 
+// ============================================================================
+// MONTHLY PLAN VALIDATION SCHEMAS
+// ============================================================================
+
+// Generation mode enum
+export const generationModeEnum = z.enum(['growth-curve', 'monthly-plan']);
+
+// Month format validation (YYYY-MM)
+const monthFormatRegex = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+// Monthly metric targets schema
+export const monthlyMetricTargetsSchema = z.object({
+  leadsCreated: z.number().int().min(0).max(10000),
+  contactsCreated: z.number().int().min(0).max(10000),
+  companiesCreated: z.number().int().min(0).max(5000),
+  dealsCreated: z.number().int().min(0).max(5000),
+  closedWonCount: z.number().int().min(0).max(5000),
+  closedWonValue: z.number().min(0).max(100000000),
+  pipelineAddedValue: z.number().min(0).max(100000000),
+});
+
+// Monthly target (single month) schema
+export const monthlyTargetSchema = z.object({
+  month: z.string().regex(monthFormatRegex, 'Month must be in YYYY-MM format'),
+  targets: monthlyMetricTargetsSchema,
+  overrides: z.object({
+    avgDealSize: z.number().min(0).optional(),
+    winRate: z.number().min(0).max(100).optional(),
+    conversionRate: z.number().min(0).max(100).optional(),
+  }).optional(),
+});
+
+// Tolerance config schema
+export const toleranceConfigSchema = z.object({
+  countTolerance: z.number().min(0).max(1).default(0), // 0 = exact
+  valueTolerance: z.number().min(0).max(0.1).default(0.005), // 0.005 = ±0.5%
+});
+
+// Monthly plan metadata schema
+export const monthlyPlanMetadataSchema = z.object({
+  version: z.string().default('1.0'),
+  createdAt: z.string().datetime().optional(),
+  lastModifiedAt: z.string().datetime().optional(),
+});
+
+// Full monthly plan schema with validation
+export const monthlyPlanSchema = z.object({
+  months: z.array(monthlyTargetSchema)
+    .min(1, 'At least one month is required')
+    .max(24, 'Maximum 24 months allowed'),
+  tolerances: toleranceConfigSchema.default({ countTolerance: 0, valueTolerance: 0.005 }),
+  metadata: monthlyPlanMetadataSchema.optional(),
+}).superRefine((plan, ctx) => {
+  // Validate date range: not in future, chronological order
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  let prevMonth = '';
+  for (let i = 0; i < plan.months.length; i++) {
+    const m = plan.months[i];
+
+    // Check not in future
+    if (m.month > currentMonth) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Month ${m.month} is in the future`,
+        path: ['months', i, 'month'],
+      });
+    }
+
+    // Check chronological order
+    if (prevMonth && m.month <= prevMonth) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Months must be in chronological order (${m.month} after ${prevMonth})`,
+        path: ['months', i, 'month'],
+      });
+    }
+    prevMonth = m.month;
+
+    // Logical constraints
+    const { targets } = m;
+
+    // Leads must be <= contacts (leads are a subset)
+    if (targets.leadsCreated > targets.contactsCreated) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Leads (${targets.leadsCreated}) cannot exceed contacts (${targets.contactsCreated}) - leads are a subset of contacts`,
+        path: ['months', i, 'targets', 'leadsCreated'],
+      });
+    }
+
+    // Closed won count must be <= deals created
+    if (targets.closedWonCount > targets.dealsCreated) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Closed won count (${targets.closedWonCount}) cannot exceed deals created (${targets.dealsCreated})`,
+        path: ['months', i, 'targets', 'closedWonCount'],
+      });
+    }
+
+    // If closedWonValue > 0, closedWonCount must be > 0
+    if (targets.closedWonValue > 0 && targets.closedWonCount === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Closed won value is ${targets.closedWonValue} but closed won count is 0`,
+        path: ['months', i, 'targets', 'closedWonValue'],
+      });
+    }
+
+    // Pipeline value should generally be >= closed won value
+    if (targets.pipelineAddedValue > 0 && targets.pipelineAddedValue < targets.closedWonValue) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Pipeline added value (${targets.pipelineAddedValue}) is less than closed won value (${targets.closedWonValue}) - this is unusual`,
+        path: ['months', i, 'targets', 'pipelineAddedValue'],
+      });
+    }
+  }
+});
+
+// Extended create demo schema supporting both modes
+export const createDemoV2Schema = createDemoSchema.extend({
+  mode: generationModeEnum.default('growth-curve'),
+  monthlyPlan: monthlyPlanSchema.optional(),
+}).superRefine((data, ctx) => {
+  // If mode is monthly-plan, monthlyPlan is required
+  if (data.mode === 'monthly-plan' && !data.monthlyPlan) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Monthly plan is required when mode is monthly-plan',
+      path: ['monthlyPlan'],
+    });
+  }
+});
+
+// Validate plan endpoint schema
+export const validatePlanSchema = z.object({
+  country: z.string().length(2).regex(/^[A-Z]{2}$/),
+  industry: industryEnum,
+  monthlyPlan: monthlyPlanSchema,
+});
+
 // Types from schemas
 export type CreateDemoInput = z.infer<typeof createDemoSchema>;
+export type CreateDemoV2Input = z.infer<typeof createDemoV2Schema>;
 export type PreviewInput = z.infer<typeof previewSchema>;
 export type ListJobsQuery = z.infer<typeof listJobsQuerySchema>;
+export type MonthlyPlanInput = z.infer<typeof monthlyPlanSchema>;
+export type ValidatePlanInput = z.infer<typeof validatePlanSchema>;

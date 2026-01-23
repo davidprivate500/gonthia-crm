@@ -408,6 +408,9 @@ export const invoiceLineItems = pgTable('invoice_line_items', {
 // DEMO GENERATOR TABLES
 // ============================================================================
 
+// Demo generation mode enum
+export const demoGenerationModeEnum = pgEnum('demo_generation_mode', ['growth-curve', 'monthly-plan']);
+
 // Demo generation jobs - tracks each demo tenant generation
 export const demoGenerationJobs = pgTable('demo_generation_jobs', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -415,10 +418,18 @@ export const demoGenerationJobs = pgTable('demo_generation_jobs', {
   createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
   // Job status
   status: demoJobStatusEnum('status').notNull().default('pending'),
+  // Generation mode: growth-curve (original) or monthly-plan (new)
+  mode: demoGenerationModeEnum('mode').notNull().default('growth-curve'),
   // Full configuration used for generation (JSON)
   config: json('config').notNull(),
   // Seed for deterministic generation
   seed: varchar('seed', { length: 64 }).notNull(),
+  // Monthly plan data (JSON) - only populated when mode is 'monthly-plan'
+  monthlyPlanJson: json('monthly_plan_json'),
+  // Plan schema version for backwards compatibility
+  planVersion: varchar('plan_version', { length: 20 }),
+  // Tolerance config used for verification
+  toleranceConfig: json('tolerance_config'),
   // Result: the created tenant
   createdTenantId: uuid('created_tenant_id').references(() => tenants.id, { onDelete: 'set null' }),
   // Progress tracking
@@ -427,6 +438,10 @@ export const demoGenerationJobs = pgTable('demo_generation_jobs', {
   logs: json('logs').default([]),
   // Metrics (actual generated counts)
   metrics: json('metrics'),
+  // KPI Verification report (JSON) - populated after generation
+  verificationReport: json('verification_report'),
+  // Quick access: did verification pass?
+  verificationPassed: boolean('verification_passed'),
   // Error info (if failed)
   errorMessage: text('error_message'),
   errorStack: text('error_stack'),
@@ -440,6 +455,7 @@ export const demoGenerationJobs = pgTable('demo_generation_jobs', {
   index('idx_demo_jobs_created_by').on(table.createdById),
   index('idx_demo_jobs_created_at').on(table.createdAt),
   index('idx_demo_jobs_created_tenant').on(table.createdTenantId),
+  index('idx_demo_jobs_mode').on(table.mode),
 ]);
 
 // Demo tenant metadata - additional info for demo-generated tenants

@@ -289,6 +289,8 @@ export const api = {
         masterApiFetch('/demo-generator', { method: 'POST', body: data }),
       preview: (data: Record<string, unknown>) =>
         masterApiFetch('/demo-generator/preview', { method: 'POST', body: data }),
+      validatePlan: (data: Record<string, unknown>) =>
+        masterApiFetch('/demo-generator/validate-plan', { method: 'POST', body: data }),
       delete: (jobId: string) =>
         masterApiFetch(`/demo-generator/${jobId}`, { method: 'DELETE' }),
     },

@@ -24,15 +24,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { api } from '@/lib/api/client';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Plus, MoreHorizontal, Eye, Trash2, RefreshCw, LogIn,
-  Loader2, CheckCircle, XCircle, Clock,
+  Loader2, CheckCircle, XCircle, Clock, Calendar, Zap,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { MonthlyGrid, type MonthlyTarget } from '@/components/demo-generator/monthly-grid';
+import { PatternHelpers, generateMonthsArray } from '@/components/demo-generator/monthly-plan-helpers';
 
 interface DemoJob {
   id: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
+  mode: 'growth-curve' | 'monthly-plan';
   config: {
     tenantName: string;
     country: string;
@@ -58,6 +62,7 @@ interface DemoJob {
     deals: number;
     totalPipelineValue: number;
   } | null;
+  verificationPassed: boolean | null;
   errorMessage: string | null;
   startedAt: string | null;
   completedAt: string | null;
@@ -98,6 +103,7 @@ export default function DemoGeneratorPage() {
   const [impersonatingJobId, setImpersonatingJobId] = useState<string | null>(null);
 
   // Form state
+  const [mode, setMode] = useState<'quick' | 'monthly'>('quick');
   const [formData, setFormData] = useState({
     tenantName: '',
     country: 'US',
@@ -110,6 +116,8 @@ export default function DemoGeneratorPage() {
     pipelineValue: 500000,
     closedWonValue: 150000,
   });
+  const [monthlyTargets, setMonthlyTargets] = useState<MonthlyTarget[]>([]);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   // Load jobs
   const loadJobs = async () => {
@@ -150,30 +158,74 @@ export default function DemoGeneratorPage() {
 
   const handleGenerate = async () => {
     setIsGenerating(true);
-    try {
-      const response = await api.master.demoGenerator.create({
-        tenantName: formData.tenantName || undefined,
-        country: formData.country,
-        industry: formData.industry,
-        startDate: formData.startDate,
-        teamSize: formData.teamSize,
-        targets: {
-          leads: formData.leads,
-          contacts: formData.contacts,
-          companies: formData.companies,
-          pipelineValue: formData.pipelineValue,
-          closedWonValue: formData.closedWonValue,
-          closedWonCount: Math.round(formData.closedWonValue / 5000),
-        },
-      });
+    setValidationErrors({});
 
-      if (response.data) {
-        setIsDialogOpen(false);
-        loadJobs();
+    try {
+      if (mode === 'monthly') {
+        // Monthly plan mode
+        if (monthlyTargets.length === 0) {
+          alert('Please generate a monthly plan first using Quick Start.');
+          setIsGenerating(false);
+          return;
+        }
+
+        const response = await api.master.demoGenerator.create({
+          tenantName: formData.tenantName || undefined,
+          country: formData.country,
+          industry: formData.industry,
+          startDate: monthlyTargets[0]?.month + '-01',
+          teamSize: formData.teamSize,
+          mode: 'monthly-plan',
+          monthlyPlan: {
+            months: monthlyTargets,
+            tolerances: {
+              countTolerance: 0,
+              valueTolerance: 0.005,
+            },
+            metadata: {
+              version: '1.0',
+              createdAt: new Date().toISOString(),
+              lastModifiedAt: new Date().toISOString(),
+            },
+          },
+        });
+
+        if (response.data) {
+          setIsDialogOpen(false);
+          setMonthlyTargets([]);
+          loadJobs();
+        }
+      } else {
+        // Quick generate mode (original)
+        const response = await api.master.demoGenerator.create({
+          tenantName: formData.tenantName || undefined,
+          country: formData.country,
+          industry: formData.industry,
+          startDate: formData.startDate,
+          teamSize: formData.teamSize,
+          mode: 'growth-curve',
+          targets: {
+            leads: formData.leads,
+            contacts: formData.contacts,
+            companies: formData.companies,
+            pipelineValue: formData.pipelineValue,
+            closedWonValue: formData.closedWonValue,
+            closedWonCount: Math.round(formData.closedWonValue / 5000),
+          },
+        });
+
+        if (response.data) {
+          setIsDialogOpen(false);
+          loadJobs();
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to start generation:', error);
-      alert('Failed to start generation. Please try again.');
+      if (error.response?.data?.errors) {
+        setValidationErrors(error.response.data.errors);
+      } else {
+        alert('Failed to start generation. Please try again.');
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -231,7 +283,7 @@ export default function DemoGeneratorPage() {
                 Generate Demo Client
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className={mode === 'monthly' ? 'max-w-4xl max-h-[90vh] overflow-y-auto' : 'max-w-2xl'}>
               <DialogHeader>
                 <DialogTitle>Generate Demo Client</DialogTitle>
                 <DialogDescription>
@@ -239,8 +291,22 @@ export default function DemoGeneratorPage() {
                 </DialogDescription>
               </DialogHeader>
 
+              {/* Mode Toggle */}
+              <Tabs value={mode} onValueChange={(v) => setMode(v as 'quick' | 'monthly')} className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="quick" className="flex items-center gap-2">
+                    <Zap className="h-4 w-4" />
+                    Quick Generate
+                  </TabsTrigger>
+                  <TabsTrigger value="monthly" className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    Monthly Plan
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+
               <div className="grid gap-4 py-4">
-                {/* Industry Selection */}
+                {/* Common Settings */}
                 <div className="grid grid-cols-3 gap-2">
                   {industries.slice(0, 3).map((ind) => (
                     <Button
@@ -283,114 +349,175 @@ export default function DemoGeneratorPage() {
                       </SelectContent>
                     </Select>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="startDate">Tenant Start Date</Label>
-                    <Input
-                      id="startDate"
-                      type="date"
-                      value={formData.startDate}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, startDate: e.target.value }))}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="teamSize">Team Size</Label>
-                    <Input
-                      id="teamSize"
-                      type="number"
-                      min={2}
-                      max={50}
-                      value={formData.teamSize}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, teamSize: parseInt(e.target.value) || 8 }))}
-                    />
-                  </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="leads">Leads</Label>
-                    <Input
-                      id="leads"
-                      type="number"
-                      min={100}
-                      max={50000}
-                      value={formData.leads}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, leads: parseInt(e.target.value) || 2000 }))}
-                    />
-                  </div>
+                {mode === 'quick' ? (
+                  <>
+                    {/* Quick Generate Mode */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="startDate">Tenant Start Date</Label>
+                        <Input
+                          id="startDate"
+                          type="date"
+                          value={formData.startDate}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, startDate: e.target.value }))}
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="contacts">Contacts</Label>
-                    <Input
-                      id="contacts"
-                      type="number"
-                      min={50}
-                      max={20000}
-                      value={formData.contacts}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, contacts: parseInt(e.target.value) || 500 }))}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="companies">Companies</Label>
-                    <Input
-                      id="companies"
-                      type="number"
-                      min={20}
-                      max={5000}
-                      value={formData.companies}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, companies: parseInt(e.target.value) || 200 }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="pipelineValue">Pipeline Value ($)</Label>
-                    <Input
-                      id="pipelineValue"
-                      type="number"
-                      min={10000}
-                      max={100000000}
-                      value={formData.pipelineValue}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, pipelineValue: parseInt(e.target.value) || 500000 }))}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="closedWonValue">Closed Won Value ($)</Label>
-                    <Input
-                      id="closedWonValue"
-                      type="number"
-                      min={5000}
-                      max={50000000}
-                      value={formData.closedWonValue}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, closedWonValue: parseInt(e.target.value) || 150000 }))}
-                    />
-                  </div>
-                </div>
-
-                {/* Preview Summary */}
-                <Card className="bg-gray-50">
-                  <CardContent className="pt-4">
-                    <div className="text-sm text-gray-600">
-                      <p>Estimated generation time: ~30 seconds</p>
-                      <p>
-                        Will create {formData.leads.toLocaleString()} leads,{' '}
-                        {formData.contacts.toLocaleString()} contacts,{' '}
-                        {formData.companies.toLocaleString()} companies
-                      </p>
+                      <div className="space-y-2">
+                        <Label htmlFor="teamSize">Team Size</Label>
+                        <Input
+                          id="teamSize"
+                          type="number"
+                          min={2}
+                          max={50}
+                          value={formData.teamSize}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, teamSize: parseInt(e.target.value) || 8 }))}
+                        />
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
+
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="leads">Leads</Label>
+                        <Input
+                          id="leads"
+                          type="number"
+                          min={100}
+                          max={50000}
+                          value={formData.leads}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, leads: parseInt(e.target.value) || 2000 }))}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="contacts">Contacts</Label>
+                        <Input
+                          id="contacts"
+                          type="number"
+                          min={50}
+                          max={20000}
+                          value={formData.contacts}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, contacts: parseInt(e.target.value) || 500 }))}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="companies">Companies</Label>
+                        <Input
+                          id="companies"
+                          type="number"
+                          min={20}
+                          max={5000}
+                          value={formData.companies}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, companies: parseInt(e.target.value) || 200 }))}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="pipelineValue">Pipeline Value ($)</Label>
+                        <Input
+                          id="pipelineValue"
+                          type="number"
+                          min={10000}
+                          max={100000000}
+                          value={formData.pipelineValue}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, pipelineValue: parseInt(e.target.value) || 500000 }))}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="closedWonValue">Closed Won Value ($)</Label>
+                        <Input
+                          id="closedWonValue"
+                          type="number"
+                          min={5000}
+                          max={50000000}
+                          value={formData.closedWonValue}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, closedWonValue: parseInt(e.target.value) || 150000 }))}
+                        />
+                      </div>
+                    </div>
+
+                    <Card className="bg-gray-50">
+                      <CardContent className="pt-4">
+                        <div className="text-sm text-gray-600">
+                          <p>Estimated generation time: ~30 seconds</p>
+                          <p>
+                            Will create {formData.leads.toLocaleString()} leads,{' '}
+                            {formData.contacts.toLocaleString()} contacts,{' '}
+                            {formData.companies.toLocaleString()} companies
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </>
+                ) : (
+                  <>
+                    {/* Monthly Plan Mode */}
+                    <div className="space-y-2">
+                      <Label htmlFor="teamSize">Team Size</Label>
+                      <Input
+                        id="teamSize"
+                        type="number"
+                        min={2}
+                        max={50}
+                        value={formData.teamSize}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, teamSize: parseInt(e.target.value) || 8 }))}
+                        className="max-w-[200px]"
+                      />
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-base font-medium">Monthly Targets</Label>
+                        <PatternHelpers months={monthlyTargets} onApply={setMonthlyTargets} />
+                      </div>
+
+                      {monthlyTargets.length === 0 ? (
+                        <Card className="border-dashed">
+                          <CardContent className="pt-6">
+                            <div className="text-center py-6 text-gray-500">
+                              <Calendar className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                              <p className="mb-2">No monthly plan yet</p>
+                              <p className="text-sm">Click &quot;Quick Start&quot; above to generate a plan with growth patterns.</p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ) : (
+                        <MonthlyGrid
+                          months={monthlyTargets}
+                          onChange={setMonthlyTargets}
+                          errors={validationErrors}
+                        />
+                      )}
+                    </div>
+
+                    <Card className="bg-blue-50 border-blue-200">
+                      <CardContent className="pt-4">
+                        <div className="text-sm text-blue-700">
+                          <p className="font-medium mb-1">Monthly Plan Mode</p>
+                          <p>Define exact monthly targets for precise control over generated data.</p>
+                          <p>Counts will match exactly; values match within 0.5% tolerance.</p>
+                          <p>A verification report will be generated after completion.</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </>
+                )}
               </div>
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleGenerate} disabled={isGenerating}>
+                <Button
+                  onClick={handleGenerate}
+                  disabled={isGenerating || (mode === 'monthly' && monthlyTargets.length === 0)}
+                >
                   {isGenerating ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -438,8 +565,8 @@ export default function DemoGeneratorPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Tenant Name</TableHead>
+                    <TableHead>Mode</TableHead>
                     <TableHead>Country</TableHead>
-                    <TableHead>Industry</TableHead>
                     <TableHead>Contacts</TableHead>
                     <TableHead>Deals</TableHead>
                     <TableHead>Pipeline</TableHead>
@@ -459,12 +586,16 @@ export default function DemoGeneratorPage() {
                           {job.tenantName || job.config.tenantName}
                         </TableCell>
                         <TableCell>
-                          {country?.flag} {country?.value || job.config.country}
+                          <Badge variant={job.mode === 'monthly-plan' ? 'default' : 'outline'} className="text-xs">
+                            {job.mode === 'monthly-plan' ? (
+                              <><Calendar className="h-3 w-3 mr-1" /> Monthly</>
+                            ) : (
+                              <><Zap className="h-3 w-3 mr-1" /> Quick</>
+                            )}
+                          </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary">
-                            {industries.find((i) => i.value === job.config.industry)?.label || job.config.industry}
-                          </Badge>
+                          {country?.flag} {country?.value || job.config.country}
                         </TableCell>
                         <TableCell>
                           {job.metrics?.contacts?.toLocaleString() || '-'}
@@ -487,6 +618,11 @@ export default function DemoGeneratorPage() {
                               <span className="text-xs text-gray-500">
                                 {job.progress}%
                               </span>
+                            )}
+                            {job.status === 'completed' && job.mode === 'monthly-plan' && job.verificationPassed !== null && (
+                              <Badge variant={job.verificationPassed ? 'default' : 'destructive'} className="text-xs">
+                                {job.verificationPassed ? 'Verified' : 'Mismatch'}
+                              </Badge>
                             )}
                           </div>
                           {job.status === 'running' && (

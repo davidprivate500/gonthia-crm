@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db, demoGenerationJobs, demoTenantMetadata, tenants } from '@/lib/db';
 import { requireMasterAdmin, requireMasterAdminWithCsrf } from '@/lib/auth/middleware';
-import { createDemoSchema, listJobsQuerySchema } from '@/validations/demo-generator';
+import { createDemoSchema, createDemoV2Schema, listJobsQuerySchema } from '@/validations/demo-generator';
 import {
   successResponse, validationError, formatZodErrors,
   paginatedResponse, internalError, badRequestError,
@@ -9,8 +9,11 @@ import {
 import { eq, desc, asc, ilike, and, sql } from 'drizzle-orm';
 import { toSearchPattern } from '@/lib/search';
 import { DemoGenerator } from '@/lib/demo-generator/engine/generator';
+import { MonthlyPlanGenerator } from '@/lib/demo-generator/engine/monthly-plan-generator';
+import { planValidator } from '@/lib/demo-generator/engine/plan-validator';
 import { mergeWithDefaults } from '@/lib/demo-generator/config';
 import { generateSeed } from '@/lib/demo-generator/engine/rng';
+import type { DemoGenerationConfigV2 } from '@/lib/demo-generator/types';
 
 // POST /api/master/demo-generator - Start a new demo generation
 export async function POST(request: NextRequest) {
@@ -21,47 +24,100 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const result = createDemoSchema.safeParse(body);
+
+    // Parse with V2 schema which supports both modes
+    const result = createDemoV2Schema.safeParse(body);
 
     if (!result.success) {
       return validationError(formatZodErrors(result.error));
     }
 
-    // Merge with defaults
-    const config = mergeWithDefaults(result.data);
-
-    // Generate or use provided seed
+    const mode = result.data.mode || 'growth-curve';
     const seed = result.data.seed || generateSeed();
 
-    // Create job record
-    const [job] = await db.insert(demoGenerationJobs).values({
-      createdById: auth.userId,
-      status: 'pending',
-      config,
-      seed,
-      progress: 0,
-      currentStep: 'Queued',
-      logs: [],
-    }).returning();
+    if (mode === 'monthly-plan') {
+      // Monthly plan mode
+      if (!result.data.monthlyPlan) {
+        return badRequestError('Monthly plan is required when mode is monthly-plan');
+      }
 
-    // Start generation (synchronous for now, could be async later)
-    const generator = new DemoGenerator(job.id, config, seed);
+      // Validate the plan
+      const planValidation = planValidator.validate(result.data.monthlyPlan);
+      if (!planValidation.valid) {
+        return validationError({
+          monthlyPlan: planValidation.errors.map(e => `${e.path}: ${e.message}`),
+        });
+      }
 
-    // Run generation in the background but respond immediately
-    // For simplicity, we run synchronously here
-    // In production, you might want to use a job queue
-    generator.generate().catch((error) => {
-      console.error('Demo generation failed:', error);
-    });
+      // Build config for monthly-plan mode
+      const configV2: DemoGenerationConfigV2 = {
+        ...mergeWithDefaults(result.data),
+        mode: 'monthly-plan',
+        monthlyPlan: result.data.monthlyPlan,
+      };
 
-    return successResponse({
-      jobId: job.id,
-      status: 'running',
-      seed,
-      estimatedSeconds: Math.ceil(
-        (config.targets.leads + config.targets.contacts + config.targets.companies) / 5000
-      ),
-    });
+      // Create job record with monthly plan data
+      const [job] = await db.insert(demoGenerationJobs).values({
+        createdById: auth.userId,
+        status: 'pending',
+        mode: 'monthly-plan',
+        config: configV2,
+        seed,
+        monthlyPlanJson: result.data.monthlyPlan,
+        planVersion: result.data.monthlyPlan.metadata?.version || '1.0',
+        toleranceConfig: result.data.monthlyPlan.tolerances,
+        progress: 0,
+        currentStep: 'Queued',
+        logs: [],
+      }).returning();
+
+      // Start monthly plan generation
+      const generator = new MonthlyPlanGenerator(job.id, configV2, seed);
+
+      generator.generate().catch((error) => {
+        console.error('Monthly plan generation failed:', error);
+      });
+
+      return successResponse({
+        jobId: job.id,
+        status: 'running',
+        mode: 'monthly-plan',
+        seed,
+        estimatedSeconds: planValidation.estimatedGenerationSeconds || 60,
+      });
+    } else {
+      // Growth-curve mode (original behavior)
+      const config = mergeWithDefaults(result.data);
+
+      // Create job record
+      const [job] = await db.insert(demoGenerationJobs).values({
+        createdById: auth.userId,
+        status: 'pending',
+        mode: 'growth-curve',
+        config,
+        seed,
+        progress: 0,
+        currentStep: 'Queued',
+        logs: [],
+      }).returning();
+
+      // Start generation
+      const generator = new DemoGenerator(job.id, config, seed);
+
+      generator.generate().catch((error) => {
+        console.error('Demo generation failed:', error);
+      });
+
+      return successResponse({
+        jobId: job.id,
+        status: 'running',
+        mode: 'growth-curve',
+        seed,
+        estimatedSeconds: Math.ceil(
+          (config.targets.leads + config.targets.contacts + config.targets.companies) / 5000
+        ),
+      });
+    }
   } catch (error) {
     console.error('Create demo generation error:', error);
     return internalError();
@@ -139,12 +195,14 @@ export async function GET(request: NextRequest) {
     const jobs = await db.select({
       id: demoGenerationJobs.id,
       status: demoGenerationJobs.status,
+      mode: demoGenerationJobs.mode,
       config: demoGenerationJobs.config,
       seed: demoGenerationJobs.seed,
       createdTenantId: demoGenerationJobs.createdTenantId,
       progress: demoGenerationJobs.progress,
       currentStep: demoGenerationJobs.currentStep,
       metrics: demoGenerationJobs.metrics,
+      verificationPassed: demoGenerationJobs.verificationPassed,
       errorMessage: demoGenerationJobs.errorMessage,
       startedAt: demoGenerationJobs.startedAt,
       completedAt: demoGenerationJobs.completedAt,
@@ -173,6 +231,7 @@ export async function GET(request: NextRequest) {
     const formattedJobs = jobs.map((job) => ({
       id: job.id,
       status: job.status,
+      mode: job.mode || 'growth-curve',
       config: job.config,
       seed: job.seed,
       createdTenantId: job.createdTenantId,
@@ -180,6 +239,7 @@ export async function GET(request: NextRequest) {
       progress: job.progress,
       currentStep: job.currentStep,
       metrics: job.metrics,
+      verificationPassed: job.verificationPassed,
       errorMessage: job.errorMessage,
       startedAt: job.startedAt,
       completedAt: job.completedAt,

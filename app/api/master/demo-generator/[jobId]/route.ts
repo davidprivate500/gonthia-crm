@@ -38,8 +38,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return successResponse({
       id: job.id,
       status: job.status,
+      mode: job.mode || 'growth-curve',
       config: job.config,
       seed: job.seed,
+      // Monthly plan specific fields
+      monthlyPlan: job.monthlyPlanJson,
+      planVersion: job.planVersion,
+      toleranceConfig: job.toleranceConfig,
+      verificationReport: job.verificationReport,
+      verificationPassed: job.verificationPassed,
+      // Common fields
       createdTenantId: job.createdTenantId,
       tenant: tenant ? { id: tenant.id, name: tenant.name } : null,
       progress: job.progress,

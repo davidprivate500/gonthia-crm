@@ -220,4 +220,115 @@ export interface PreviewResult {
   estimatedGenerationSeconds: number;
 }
 
+// ============================================================================
+// MONTHLY PLAN TYPES (for precise month-by-month control)
+// ============================================================================
+
+export type GenerationMode = 'growth-curve' | 'monthly-plan';
+
+export interface MonthlyMetricTargets {
+  leadsCreated: number;
+  contactsCreated: number;
+  companiesCreated: number;
+  dealsCreated: number;
+  closedWonCount: number;
+  closedWonValue: number;
+  pipelineAddedValue: number;
+}
+
+export interface MonthlyTarget {
+  month: string; // "YYYY-MM" format (e.g., "2025-01")
+  targets: MonthlyMetricTargets;
+  overrides?: {
+    avgDealSize?: number;
+    winRate?: number;
+    conversionRate?: number;
+  };
+}
+
+export interface ToleranceConfig {
+  countTolerance: number; // 0 for exact match
+  valueTolerance: number; // 0.005 for ±0.5%
+}
+
+export interface MonthlyPlanMetadata {
+  version: string;
+  createdAt?: string;
+  lastModifiedAt?: string;
+}
+
+export interface MonthlyPlan {
+  months: MonthlyTarget[];
+  tolerances: ToleranceConfig;
+  metadata?: MonthlyPlanMetadata;
+}
+
+// Extended config that supports both modes
+export interface DemoGenerationConfigV2 extends DemoGenerationConfig {
+  mode: GenerationMode;
+  monthlyPlan?: MonthlyPlan;
+}
+
+// Verification report types
+export interface MetricVerificationResult {
+  metric: keyof MonthlyMetricTargets;
+  target: number;
+  actual: number;
+  diff: number;
+  diffPercent: number;
+  passed: boolean;
+  tolerance: number;
+}
+
+export interface MonthVerificationResult {
+  month: string;
+  metrics: MetricVerificationResult[];
+  passed: boolean;
+}
+
+export interface VerificationReport {
+  jobId: string;
+  tenantId: string;
+  generatedAt: string;
+  overallPassed: boolean;
+  totalMetrics: number;
+  passedMetrics: number;
+  failedMetrics: number;
+  months: MonthVerificationResult[];
+  tolerances: ToleranceConfig;
+}
+
+// Plan validation types
+export interface PlanValidationError {
+  path: string;
+  message: string;
+  suggestion?: string;
+}
+
+export interface PlanValidationWarning {
+  path: string;
+  message: string;
+}
+
+export interface DerivedMetrics {
+  totalContacts: number;
+  totalLeads: number;
+  totalCompanies: number;
+  totalDeals: number;
+  totalClosedWonCount: number;
+  totalClosedWonValue: number;
+  totalPipelineValue: number;
+  avgDealSize: number;
+  overallWinRate: number;
+  avgMonthlyGrowth: number;
+}
+
+export interface PlanValidationResult {
+  valid: boolean;
+  errors: PlanValidationError[];
+  warnings: PlanValidationWarning[];
+  derived?: DerivedMetrics;
+  estimatedGenerationSeconds?: number;
+}
+
 // Runtime defaults are in ./defaults.ts to avoid circular dependencies
