@@ -7,22 +7,25 @@ import * as schema from '@/drizzle/schema';
  * The Vercel Supabase integration injects the direct connection URL,
  * but serverless functions need the transaction pooler.
  *
- * Direct URL pattern: postgresql://postgres.xxx:PWD@db.xxx.supabase.co:5432/postgres
- * Pooler URL pattern: postgresql://postgres.xxx:PWD@aws-1-eu-central-1.pooler.supabase.com:6543/postgres
+ * Direct URL format:  postgresql://postgres:PWD@db.PROJECT_ID.supabase.co:5432/postgres
+ * Pooler URL format:  postgresql://postgres.PROJECT_ID:PWD@aws-1-eu-central-1.pooler.supabase.com:6543/postgres
+ *
+ * Key differences:
+ * 1. Username changes from "postgres" to "postgres.PROJECT_ID"
+ * 2. Host changes from "db.PROJECT_ID.supabase.co" to "aws-1-eu-central-1.pooler.supabase.com"
+ * 3. Port changes from 5432 to 6543
  */
 function transformToPoolerUrl(url: string): string {
-  // Check if this is a Supabase direct connection URL
-  const directPattern = /db\.([a-z0-9]+)\.supabase\.co:?(\d+)?/;
+  // Match Supabase direct connection URL pattern
+  // postgresql://postgres:PASSWORD@db.PROJECT_ID.supabase.co:5432/postgres
+  const directPattern = /^(postgresql:\/\/)postgres:([^@]+)@db\.([a-z0-9]+)\.supabase\.co(?::\d+)?(.*)$/;
   const match = url.match(directPattern);
 
   if (match) {
-    // Replace direct connection host with pooler host
-    // Region is eu-central-1 based on the project setup
-    const poolerUrl = url.replace(
-      directPattern,
-      'aws-1-eu-central-1.pooler.supabase.com:6543'
-    );
-    console.log('[DB] Transformed direct URL to pooler URL');
+    const [, protocol, password, projectId, pathAndParams] = match;
+    // Transform to pooler URL format
+    const poolerUrl = `${protocol}postgres.${projectId}:${password}@aws-1-eu-central-1.pooler.supabase.com:6543${pathAndParams || '/postgres'}`;
+    console.log('[DB] Transformed direct URL to pooler URL for project:', projectId);
     return poolerUrl;
   }
 
