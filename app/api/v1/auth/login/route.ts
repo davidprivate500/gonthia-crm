@@ -123,42 +123,7 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({ data: responseData });
     response.headers.set('Set-Cookie', cookieHeader);
     return response;
-  } catch (error: any) {
-    // TEMPORARY: Return actual error for debugging (remove in production)
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorName = error instanceof Error ? error.name : 'Unknown';
-    const errorCode = error?.code || 'no_code';
-    const errorCause = error?.cause ? String(error.cause) : 'no_cause';
-
-    console.error('Login error details:', {
-      message: errorMessage,
-      name: errorName,
-      code: errorCode,
-      cause: errorCause,
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-
-    // Return error details for debugging
-    return NextResponse.json({
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-        debug: {
-          errorMessage,
-          errorName,
-          errorCode,
-          errorCause,
-          hasSessionSecret: !!process.env.SESSION_SECRET,
-          sessionSecretLength: process.env.SESSION_SECRET?.length || 0,
-          hasDatabaseUrl: !!process.env.DATABASE_URL,
-          rawDatabaseUrl: process.env.DATABASE_URL?.substring(0, 60) + '...',
-          urlContainsDirectPattern: /db\.[a-z0-9]+\.supabase\.co/.test(process.env.DATABASE_URL || ''),
-          urlContainsPoolerPattern: /pooler\.supabase\.com/.test(process.env.DATABASE_URL || ''),
-          usingPoolerEnvVar: !!process.env.DATABASE_URL_POOLER,
-          allDbEnvVars: Object.keys(process.env).filter(k => k.includes('DATABASE') || k.includes('POSTGRES') || k.includes('SUPABASE')).join(','),
-          nodeEnv: process.env.NODE_ENV,
-        }
-      }
-    }, { status: 500 });
+  } catch (error) {
+    return safeInternalError(error, 'Login');
   }
 }

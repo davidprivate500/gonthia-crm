@@ -153,11 +153,17 @@ export default function MonthlyUpdatesPage() {
     }
   };
 
-  // Load patch job history (would need to add this to the API client)
+  // Load patch job history
   const loadPatchJobs = async () => {
-    // For now, we'll skip this as the endpoint is not exposed in the list API
-    // In a full implementation, you'd add a /api/master/demo-generator/patch-jobs endpoint
-    setPatchJobs([]);
+    try {
+      const response = await api.master.demoGenerator.listPatchJobs({ limit: 50 });
+      if (response.data) {
+        setPatchJobs((response.data as any).jobs || []);
+      }
+    } catch (error) {
+      console.error('Failed to load patch jobs:', error);
+      setPatchJobs([]);
+    }
   };
 
   useEffect(() => {

@@ -302,6 +302,8 @@ export const api = {
         masterApiFetch(`/demo-generator/tenants/${tenantId}/patch/apply`, { method: 'POST', body: data }),
       getPatchJob: (jobId: string) =>
         masterApiFetch(`/demo-generator/patch-jobs/${jobId}`),
+      listPatchJobs: (params?: { tenantId?: string; status?: string; page?: number; limit?: number }) =>
+        masterApiFetch(`/demo-generator/patch-jobs?${buildSearchParams(params as Record<string, string | number | undefined>)}`),
     },
 
     // Impersonation
