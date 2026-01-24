@@ -153,6 +153,9 @@ export async function POST(request: NextRequest) {
           hasDatabaseUrl: !!process.env.DATABASE_URL,
           databaseUrlStart: (process.env.DATABASE_URL_POOLER || process.env.DATABASE_URL)?.substring(0, 50) + '...',
           usingPoolerUrl: !!process.env.DATABASE_URL_POOLER,
+          poolerUrlExists: 'DATABASE_URL_POOLER' in process.env,
+          poolerUrlValue: process.env.DATABASE_URL_POOLER?.substring(0, 30) || 'NOT_SET',
+          allDbEnvVars: Object.keys(process.env).filter(k => k.includes('DATABASE') || k.includes('POSTGRES') || k.includes('SUPABASE')).join(','),
           nodeEnv: process.env.NODE_ENV,
         }
       }
