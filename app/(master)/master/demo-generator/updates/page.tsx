@@ -14,15 +14,14 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/api/client';
 import {
-  ArrowLeft, Plus, Calendar, TrendingUp, AlertTriangle, CheckCircle,
-  Loader2, Clock, XCircle, Building2, ChevronLeft, ChevronRight,
-  ArrowRight, RefreshCw, Eye,
+  ArrowLeft, Plus, AlertTriangle, CheckCircle,
+  Loader2, Clock, XCircle, Building2,
+  ArrowRight, RefreshCw, Eye, Edit3,
 } from 'lucide-react';
-import { formatDistanceToNow, format, addMonths, subMonths, startOfMonth } from 'date-fns';
+import { formatDistanceToNow, format, subMonths, startOfMonth } from 'date-fns';
 
 interface DemoTenant {
   id: string;
@@ -31,6 +30,7 @@ interface DemoTenant {
   industry: string;
   country: string;
   createdAt: string;
+  startDate?: string;
 }
 
 interface MonthlyKpi {
@@ -68,8 +68,8 @@ interface PatchPreview {
   preview: {
     months: Array<{
       month: string;
-      current: MonthlyKpi;
-      target: MonthlyKpi;
+      current: Record<string, number>;
+      target: Record<string, number>;
       deltas: Record<string, { delta: number; canApply: boolean }>;
     }>;
     totalRecordsToCreate: number;
@@ -79,20 +79,19 @@ interface PatchPreview {
   currentKpis: MonthlyKpi[];
 }
 
-interface PatchMetrics {
-  leadsCreated?: number;
-  contactsCreated?: number;
-  companiesCreated?: number;
-  dealsCreated?: number;
-  closedWonCount?: number;
-  closedWonValue?: number;
-  pipelineAddedValue?: number;
-  activitiesCreated?: number;
+interface TargetMetrics {
+  contactsCreated: number;
+  companiesCreated: number;
+  dealsCreated: number;
+  closedWonCount: number;
+  closedWonValue: number;
+  activitiesCreated: number;
 }
 
-interface PatchMonthInput {
+interface MonthTargetInput {
   month: string;
-  metrics: PatchMetrics;
+  original: TargetMetrics;
+  target: TargetMetrics;
 }
 
 const statusConfig = {
@@ -102,7 +101,7 @@ const statusConfig = {
   failed: { color: 'bg-red-100 text-red-800', icon: XCircle, label: 'Failed' },
 };
 
-const METRIC_CONFIG: Array<{ key: string; label: string; isCurrency?: boolean }> = [
+const METRIC_CONFIG: Array<{ key: keyof TargetMetrics; label: string; isCurrency?: boolean }> = [
   { key: 'contactsCreated', label: 'Contacts' },
   { key: 'companiesCreated', label: 'Companies' },
   { key: 'dealsCreated', label: 'Deals' },
@@ -119,10 +118,8 @@ export default function MonthlyUpdatesPage() {
 
   // Create patch state
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
-  const [currentKpis, setCurrentKpis] = useState<MonthlyKpi[]>([]);
+  const [monthTargets, setMonthTargets] = useState<MonthTargetInput[]>([]);
   const [isLoadingKpis, setIsLoadingKpis] = useState(false);
-  const [monthRange, setMonthRange] = useState({ from: '', to: '' });
-  const [patchInputs, setPatchInputs] = useState<PatchMonthInput[]>([]);
 
   // Validation/Preview state
   const [isValidating, setIsValidating] = useState(false);
@@ -135,7 +132,6 @@ export default function MonthlyUpdatesPage() {
     try {
       const response = await api.master.demoGenerator.list();
       if (response.data) {
-        // Filter to only completed jobs with tenant IDs
         const completed = (response.data as any[])
           .filter((j: any) => j.status === 'completed' && j.createdTenantId)
           .map((j: any) => ({
@@ -145,6 +141,7 @@ export default function MonthlyUpdatesPage() {
             industry: j.config.industry,
             country: j.config.country,
             createdAt: j.createdAt,
+            startDate: j.config.startDate,
           }));
         setDemoTenants(completed);
       }
@@ -175,18 +172,10 @@ export default function MonthlyUpdatesPage() {
     loadData();
   }, []);
 
-  // Set default month range (last 3 months to current month)
-  useEffect(() => {
-    const now = new Date();
-    const from = format(subMonths(startOfMonth(now), 2), 'yyyy-MM');
-    const to = format(startOfMonth(now), 'yyyy-MM');
-    setMonthRange({ from, to });
-  }, []);
-
-  // Load KPIs when tenant is selected
+  // Load KPIs for entire tenant history when selected
   const loadTenantKpis = useCallback(async () => {
-    if (!selectedTenantId || !monthRange.from || !monthRange.to) {
-      setCurrentKpis([]);
+    if (!selectedTenantId) {
+      setMonthTargets([]);
       return;
     }
 
@@ -194,62 +183,120 @@ export default function MonthlyUpdatesPage() {
     setValidationResult(null);
 
     try {
+      // Find tenant to get start date
+      const tenant = demoTenants.find(t => t.tenantId === selectedTenantId);
+
+      // Calculate full range - from tenant creation to current month
+      const now = new Date();
+      const currentMonth = format(startOfMonth(now), 'yyyy-MM');
+
+      // Start from tenant creation or 12 months ago, whichever is earlier
+      let fromMonth: string;
+      if (tenant?.startDate) {
+        fromMonth = tenant.startDate.substring(0, 7); // YYYY-MM from YYYY-MM-DD
+      } else if (tenant?.createdAt) {
+        fromMonth = format(new Date(tenant.createdAt), 'yyyy-MM');
+      } else {
+        fromMonth = format(subMonths(now, 11), 'yyyy-MM');
+      }
+
       const response = await api.master.demoGenerator.getTenantKpis(selectedTenantId, {
-        from: monthRange.from,
-        to: monthRange.to,
+        from: fromMonth,
+        to: currentMonth,
       });
 
       if (response.data) {
         const kpis = (response.data as any).months || [];
-        setCurrentKpis(kpis);
 
-        // Initialize patch inputs for each month
-        const inputs: PatchMonthInput[] = kpis.map((k: MonthlyKpi) => ({
+        // Initialize targets with current values
+        const inputs: MonthTargetInput[] = kpis.map((k: MonthlyKpi) => ({
           month: k.month,
-          metrics: {},
+          original: {
+            contactsCreated: k.contactsCreated || 0,
+            companiesCreated: k.companiesCreated || 0,
+            dealsCreated: k.dealsCreated || 0,
+            closedWonCount: k.closedWonCount || 0,
+            closedWonValue: k.closedWonValue || 0,
+            activitiesCreated: k.activitiesCreated || 0,
+          },
+          target: {
+            contactsCreated: k.contactsCreated || 0,
+            companiesCreated: k.companiesCreated || 0,
+            dealsCreated: k.dealsCreated || 0,
+            closedWonCount: k.closedWonCount || 0,
+            closedWonValue: k.closedWonValue || 0,
+            activitiesCreated: k.activitiesCreated || 0,
+          },
         }));
-        setPatchInputs(inputs);
+        setMonthTargets(inputs);
       }
     } catch (error) {
       console.error('Failed to load KPIs:', error);
-      setCurrentKpis([]);
+      setMonthTargets([]);
     } finally {
       setIsLoadingKpis(false);
     }
-  }, [selectedTenantId, monthRange.from, monthRange.to]);
+  }, [selectedTenantId, demoTenants]);
 
   useEffect(() => {
     loadTenantKpis();
   }, [loadTenantKpis]);
 
-  // Handle patch input change
-  const handlePatchInputChange = (monthIdx: number, metric: string, value: string) => {
-    const numValue = value === '' ? undefined : parseInt(value, 10);
-    if (numValue !== undefined && (isNaN(numValue) || numValue < 0)) return;
+  // Handle target value change
+  const handleTargetChange = (monthIdx: number, metric: keyof TargetMetrics, value: string) => {
+    const numValue = value === '' ? 0 : parseInt(value, 10);
+    if (isNaN(numValue) || numValue < 0) return;
 
-    const updated = [...patchInputs];
+    const updated = [...monthTargets];
     updated[monthIdx] = {
       ...updated[monthIdx],
-      metrics: {
-        ...updated[monthIdx].metrics,
+      target: {
+        ...updated[monthIdx].target,
         [metric]: numValue,
       },
     };
-    setPatchInputs(updated);
+    setMonthTargets(updated);
     setValidationResult(null);
+  };
+
+  // Check if a value has changed from original
+  const hasChanged = (monthIdx: number, metric: keyof TargetMetrics): boolean => {
+    const month = monthTargets[monthIdx];
+    if (!month) return false;
+    return month.target[metric] !== month.original[metric];
+  };
+
+  // Get delta for display
+  const getDelta = (monthIdx: number, metric: keyof TargetMetrics): number => {
+    const month = monthTargets[monthIdx];
+    if (!month) return 0;
+    return month.target[metric] - month.original[metric];
+  };
+
+  // Check if any changes were made
+  const hasAnyChanges = (): boolean => {
+    return monthTargets.some(m =>
+      METRIC_CONFIG.some(metric => m.target[metric.key] !== m.original[metric.key])
+    );
+  };
+
+  // Get months with changes for API
+  const getMonthsWithChanges = () => {
+    return monthTargets
+      .filter(m => METRIC_CONFIG.some(metric => m.target[metric.key] !== m.original[metric.key]))
+      .map(m => ({
+        month: m.month,
+        metrics: m.target,
+      }));
   };
 
   // Validate patch
   const handleValidate = async () => {
-    if (!selectedTenantId || patchInputs.length === 0) return;
+    if (!selectedTenantId || !hasAnyChanges()) return;
 
-    // Filter to only months with actual deltas
-    const monthsWithDeltas = patchInputs.filter(m =>
-      Object.values(m.metrics).some(v => v !== undefined && v > 0)
-    );
-
-    if (monthsWithDeltas.length === 0) {
-      alert('Please enter at least one metric delta to apply.');
+    const monthsWithChanges = getMonthsWithChanges();
+    if (monthsWithChanges.length === 0) {
+      alert('No changes to apply.');
       return;
     }
 
@@ -258,8 +305,8 @@ export default function MonthlyUpdatesPage() {
     try {
       const response = await api.master.demoGenerator.validatePatch(selectedTenantId, {
         mode: 'additive',
-        planType: 'deltas',
-        months: monthsWithDeltas,
+        planType: 'targets',
+        months: monthsWithChanges,
       });
 
       setValidationResult(response.data as PatchPreview);
@@ -275,24 +322,21 @@ export default function MonthlyUpdatesPage() {
   const handleApplyPatch = async () => {
     if (!selectedTenantId || !validationResult?.valid) return;
 
-    const monthsWithDeltas = patchInputs.filter(m =>
-      Object.values(m.metrics).some(v => v !== undefined && v > 0)
-    );
+    const monthsWithChanges = getMonthsWithChanges();
 
     setIsApplying(true);
 
     try {
       const response = await api.master.demoGenerator.applyPatch(selectedTenantId, {
         mode: 'additive',
-        planType: 'deltas',
-        months: monthsWithDeltas,
+        planType: 'targets',
+        months: monthsWithChanges,
       });
 
       if (response.data) {
         const jobId = (response.data as any).jobId;
         setRunningJobId(jobId);
         setActiveTab('history');
-        // Poll for job completion
         pollJobStatus(jobId);
       }
     } catch (error: any) {
@@ -314,7 +358,8 @@ export default function MonthlyUpdatesPage() {
             setTimeout(poll, 2000);
           } else {
             setRunningJobId(null);
-            loadTenantKpis(); // Refresh KPIs
+            loadTenantKpis();
+            loadPatchJobs();
           }
         }
       } catch (error) {
@@ -337,7 +382,7 @@ export default function MonthlyUpdatesPage() {
     <>
       <MasterHeader
         title="Monthly Updates"
-        description="Add incremental data to existing demo tenants"
+        description="Edit metrics for existing demo tenants - change values directly"
         actions={
           <Button variant="outline" asChild>
             <Link href="/master/demo-generator">
@@ -352,8 +397,8 @@ export default function MonthlyUpdatesPage() {
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'create' | 'history')}>
           <TabsList className="mb-6">
             <TabsTrigger value="create" className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Create Update
+              <Edit3 className="h-4 w-4" />
+              Edit Metrics
             </TabsTrigger>
             <TabsTrigger value="history" className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
@@ -372,7 +417,7 @@ export default function MonthlyUpdatesPage() {
                   <Building2 className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                   <h3 className="text-lg font-medium mb-2">No Demo Tenants Available</h3>
                   <p className="text-gray-500 mb-4">
-                    Generate a demo client first to apply monthly updates.
+                    Generate a demo client first to edit metrics.
                   </p>
                   <Button asChild>
                     <Link href="/master/demo-generator">
@@ -388,12 +433,12 @@ export default function MonthlyUpdatesPage() {
                   <CardHeader>
                     <CardTitle>Select Demo Tenant</CardTitle>
                     <CardDescription>
-                      Choose which demo tenant to apply monthly updates to
+                      Choose which demo tenant to edit. All months will be loaded automatically.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="col-span-2">
+                    <div className="flex gap-4 items-end">
+                      <div className="flex-1">
                         <Label>Demo Tenant</Label>
                         <Select value={selectedTenantId} onValueChange={setSelectedTenantId}>
                           <SelectTrigger>
@@ -408,68 +453,49 @@ export default function MonthlyUpdatesPage() {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div>
-                        <Label>Month Range</Label>
-                        <div className="flex gap-2 items-center">
-                          <Input
-                            type="month"
-                            value={monthRange.from}
-                            onChange={(e) => setMonthRange(prev => ({ ...prev, from: e.target.value }))}
-                            className="w-[140px]"
-                          />
-                          <span className="text-gray-400">to</span>
-                          <Input
-                            type="month"
-                            value={monthRange.to}
-                            onChange={(e) => setMonthRange(prev => ({ ...prev, to: e.target.value }))}
-                            className="w-[140px]"
-                          />
-                        </div>
-                      </div>
+                      {selectedTenantId && (
+                        <Button
+                          variant="outline"
+                          onClick={loadTenantKpis}
+                          disabled={isLoadingKpis}
+                        >
+                          <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingKpis ? 'animate-spin' : ''}`} />
+                          Refresh
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* Current KPIs & Patch Inputs */}
+                {/* Metrics Grid */}
                 {selectedTenantId && (
                   <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
-                      <div>
-                        <CardTitle>Monthly Metrics</CardTitle>
-                        <CardDescription>
-                          Current values shown in gray. Enter deltas (amounts to add) below.
-                        </CardDescription>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={loadTenantKpis}
-                        disabled={isLoadingKpis}
-                      >
-                        <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingKpis ? 'animate-spin' : ''}`} />
-                        Refresh
-                      </Button>
+                    <CardHeader>
+                      <CardTitle>Monthly Metrics</CardTitle>
+                      <CardDescription>
+                        Edit values directly. Green highlight = increase, yellow = cannot decrease in additive mode.
+                      </CardDescription>
                     </CardHeader>
                     <CardContent>
                       {isLoadingKpis ? (
                         <div className="flex justify-center py-8">
                           <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
                         </div>
-                      ) : currentKpis.length === 0 ? (
+                      ) : monthTargets.length === 0 ? (
                         <p className="text-center text-gray-500 py-8">
-                          No data found for the selected date range.
+                          No data found for this tenant.
                         </p>
                       ) : (
                         <div className="overflow-x-auto">
                           <table className="w-full border-collapse text-sm">
                             <thead>
                               <tr className="bg-gray-50">
-                                <th className="p-2 text-left font-medium text-gray-600 border sticky left-0 bg-gray-50 z-10 min-w-[120px]">
+                                <th className="p-2 text-left font-medium text-gray-600 border sticky left-0 bg-gray-50 z-10 min-w-[100px]">
                                   Metric
                                 </th>
-                                {currentKpis.map((kpi) => (
-                                  <th key={kpi.month} className="p-2 text-center font-medium text-gray-600 border min-w-[120px]">
-                                    {formatMonthLabel(kpi.month)}
+                                {monthTargets.map((m) => (
+                                  <th key={m.month} className="p-2 text-center font-medium text-gray-600 border min-w-[100px]">
+                                    {formatMonthLabel(m.month)}
                                   </th>
                                 ))}
                               </tr>
@@ -481,24 +507,34 @@ export default function MonthlyUpdatesPage() {
                                     {metric.label}
                                     {metric.isCurrency && <span className="text-gray-400 ml-1">($)</span>}
                                   </td>
-                                  {currentKpis.map((kpi, idx) => {
-                                    const currentValue = (kpi as any)[metric.key] || 0;
-                                    const deltaValue = patchInputs[idx]?.metrics[metric.key as keyof PatchMetrics];
+                                  {monthTargets.map((m, idx) => {
+                                    const delta = getDelta(idx, metric.key);
+                                    const changed = hasChanged(idx, metric.key);
+                                    const isDecrease = delta < 0;
 
                                     return (
-                                      <td key={`${kpi.month}-${metric.key}`} className="p-1 border">
-                                        <div className="space-y-1">
-                                          <div className="text-xs text-gray-400 text-right px-2">
-                                            Current: {metric.isCurrency ? '$' : ''}{currentValue.toLocaleString()}
-                                          </div>
+                                      <td key={`${m.month}-${metric.key}`} className="p-1 border">
+                                        <div className="relative">
                                           <Input
                                             type="number"
                                             min={0}
-                                            placeholder="+0"
-                                            value={deltaValue ?? ''}
-                                            onChange={(e) => handlePatchInputChange(idx, metric.key, e.target.value)}
-                                            className="text-right h-8 text-green-600 font-medium"
+                                            value={m.target[metric.key]}
+                                            onChange={(e) => handleTargetChange(idx, metric.key, e.target.value)}
+                                            className={`text-right h-9 pr-2 ${
+                                              changed
+                                                ? isDecrease
+                                                  ? 'border-yellow-400 bg-yellow-50'
+                                                  : 'border-green-400 bg-green-50'
+                                                : ''
+                                            }`}
                                           />
+                                          {changed && (
+                                            <span className={`absolute -top-2 -right-1 text-xs font-medium px-1 rounded ${
+                                              isDecrease ? 'text-yellow-600' : 'text-green-600'
+                                            }`}>
+                                              {delta > 0 ? '+' : ''}{delta.toLocaleString()}
+                                            </span>
+                                          )}
                                         </div>
                                       </td>
                                     );
@@ -511,9 +547,18 @@ export default function MonthlyUpdatesPage() {
                       )}
 
                       {/* Validate Button */}
-                      {currentKpis.length > 0 && (
-                        <div className="mt-4 flex justify-end">
-                          <Button onClick={handleValidate} disabled={isValidating}>
+                      {monthTargets.length > 0 && (
+                        <div className="mt-4 flex justify-between items-center">
+                          <div className="text-sm text-gray-500">
+                            {hasAnyChanges() ? (
+                              <span className="text-blue-600 font-medium">
+                                {getMonthsWithChanges().length} month(s) modified
+                              </span>
+                            ) : (
+                              'Edit values above to make changes'
+                            )}
+                          </div>
+                          <Button onClick={handleValidate} disabled={isValidating || !hasAnyChanges()}>
                             {isValidating ? (
                               <>
                                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -540,7 +585,7 @@ export default function MonthlyUpdatesPage() {
                         {validationResult.valid ? (
                           <>
                             <CheckCircle className="h-5 w-5 text-green-600" />
-                            Patch Validated
+                            Changes Validated
                           </>
                         ) : (
                           <>
@@ -556,7 +601,7 @@ export default function MonthlyUpdatesPage() {
                         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
                           <div className="flex items-center gap-2 text-red-700 font-medium mb-2">
                             <AlertTriangle className="h-4 w-4" />
-                            Errors
+                            Errors (Cannot decrease values in additive mode)
                           </div>
                           <ul className="text-sm text-red-600 list-disc list-inside space-y-1">
                             {validationResult.errors.map((err, i) => (
@@ -624,7 +669,7 @@ export default function MonthlyUpdatesPage() {
                               ) : (
                                 <>
                                   <ArrowRight className="h-4 w-4 mr-2" />
-                                  Apply Patch
+                                  Apply Changes
                                 </>
                               )}
                             </Button>
@@ -641,21 +686,21 @@ export default function MonthlyUpdatesPage() {
           <TabsContent value="history">
             <Card>
               <CardHeader>
-                <CardTitle>Patch History</CardTitle>
+                <CardTitle>Update History</CardTitle>
                 <CardDescription>
-                  History of monthly updates applied to demo tenants
+                  History of metric updates applied to demo tenants
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {runningJobId ? (
                   <div className="py-8 text-center">
                     <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
-                    <p className="text-lg font-medium">Patch in progress...</p>
+                    <p className="text-lg font-medium">Update in progress...</p>
                     <p className="text-gray-500">This may take a few moments.</p>
                   </div>
                 ) : patchJobs.length === 0 ? (
                   <p className="text-center text-gray-500 py-8">
-                    No patch history yet. Create your first monthly update above.
+                    No update history yet. Edit some metrics above to get started.
                   </p>
                 ) : (
                   <Table>
@@ -677,7 +722,7 @@ export default function MonthlyUpdatesPage() {
                               {job.tenantName || job.tenantId.slice(0, 8)}
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline">{job.mode}</Badge>
+                              <Badge variant="outline">{job.planType}</Badge>
                             </TableCell>
                             <TableCell>
                               {formatMonthLabel(job.rangeStartMonth)} - {formatMonthLabel(job.rangeEndMonth)}
