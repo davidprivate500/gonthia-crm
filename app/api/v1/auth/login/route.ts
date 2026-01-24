@@ -151,7 +151,8 @@ export async function POST(request: NextRequest) {
           hasSessionSecret: !!process.env.SESSION_SECRET,
           sessionSecretLength: process.env.SESSION_SECRET?.length || 0,
           hasDatabaseUrl: !!process.env.DATABASE_URL,
-          databaseUrlStart: process.env.DATABASE_URL?.substring(0, 50) + '...',
+          databaseUrlStart: (process.env.DATABASE_URL_POOLER || process.env.DATABASE_URL)?.substring(0, 50) + '...',
+          usingPoolerUrl: !!process.env.DATABASE_URL_POOLER,
           nodeEnv: process.env.NODE_ENV,
         }
       }
