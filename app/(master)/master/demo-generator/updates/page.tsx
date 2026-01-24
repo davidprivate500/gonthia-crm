@@ -209,25 +209,29 @@ export default function MonthlyUpdatesPage() {
         const kpis = (response.data as any).months || [];
 
         // Initialize targets with current values
-        const inputs: MonthTargetInput[] = kpis.map((k: MonthlyKpi) => ({
-          month: k.month,
-          original: {
-            contactsCreated: k.contactsCreated || 0,
-            companiesCreated: k.companiesCreated || 0,
-            dealsCreated: k.dealsCreated || 0,
-            closedWonCount: k.closedWonCount || 0,
-            closedWonValue: k.closedWonValue || 0,
-            activitiesCreated: k.activitiesCreated || 0,
-          },
-          target: {
-            contactsCreated: k.contactsCreated || 0,
-            companiesCreated: k.companiesCreated || 0,
-            dealsCreated: k.dealsCreated || 0,
-            closedWonCount: k.closedWonCount || 0,
-            closedWonValue: k.closedWonValue || 0,
-            activitiesCreated: k.activitiesCreated || 0,
-          },
-        }));
+        // Note: KPI response has metrics nested in a 'metrics' object
+        const inputs: MonthTargetInput[] = kpis.map((k: any) => {
+          const metrics = k.metrics || k; // Handle both nested and flat structure
+          return {
+            month: k.month,
+            original: {
+              contactsCreated: metrics.contactsCreated || 0,
+              companiesCreated: metrics.companiesCreated || 0,
+              dealsCreated: metrics.dealsCreated || 0,
+              closedWonCount: metrics.closedWonCount || 0,
+              closedWonValue: metrics.closedWonValue || 0,
+              activitiesCreated: metrics.activitiesCreated || 0,
+            },
+            target: {
+              contactsCreated: metrics.contactsCreated || 0,
+              companiesCreated: metrics.companiesCreated || 0,
+              dealsCreated: metrics.dealsCreated || 0,
+              closedWonCount: metrics.closedWonCount || 0,
+              closedWonValue: metrics.closedWonValue || 0,
+              activitiesCreated: metrics.activitiesCreated || 0,
+            },
+          };
+        });
         setMonthTargets(inputs);
       }
     } catch (error) {
