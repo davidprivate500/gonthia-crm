@@ -12,7 +12,7 @@
  */
 
 import { db, demoPatchJobs, contacts, companies, deals, activities, users, pipelineStages, tags, demoTenantMetadata } from '@/lib/db';
-import { eq, and, isNull, sql } from 'drizzle-orm';
+import { eq, and, isNull, sql, inArray } from 'drizzle-orm';
 import { KpiAggregator } from './kpi-aggregator';
 import { computeDeltas, generatePreview } from './patch-validator';
 import { MonthlyAllocator } from './monthly-allocator';
@@ -132,7 +132,8 @@ export class PatchEngine {
       await this.log('info', 'Computing deltas');
       const { deltas, blockers } = computeDeltas(plan, beforeKpis);
 
-      if (blockers.length > 0) {
+      // In additive mode, blockers are hard stops. In reconcile mode, we handle negative deltas.
+      if (plan.mode === 'additive' && blockers.length > 0) {
         throw new Error(`Patch blocked: ${blockers.join('; ')}`);
       }
 
@@ -144,8 +145,15 @@ export class PatchEngine {
         await this.log('warn', `Idempotency detected: ${existingCount} records already exist for this job`);
         // Continue to after snapshot to get current state
       } else {
-        // Execute patch within transaction
-        await this.log('info', 'Executing patch');
+        // RECONCILE MODE: Execute deletions first for negative deltas
+        if (plan.mode === 'reconcile') {
+          await this.log('info', 'Reconcile mode: executing deletions for negative deltas');
+          await this.executeReconcileDeletions(plan, beforeKpis);
+          await this.updateProgress(40, 'Deletions complete');
+        }
+
+        // Execute additions (positive deltas)
+        await this.log('info', 'Executing patch (additions)');
         await this.executePatch(deltas);
       }
 
@@ -303,6 +311,280 @@ export class PatchEngine {
     ]);
 
     return results.reduce((sum, r) => sum + (r[0]?.count ?? 0), 0);
+  }
+
+  /**
+   * Execute reconcile deletions for negative deltas
+   * Deletes demo-generated records to achieve target values
+   */
+  private async executeReconcileDeletions(
+    plan: PatchPlan,
+    currentKpis: MonthlyKpiSnapshot[]
+  ): Promise<void> {
+    if (!this.ctx) throw new Error('Context not loaded');
+
+    for (const monthTarget of plan.months) {
+      const currentKpi = currentKpis.find(k => k.month === monthTarget.month);
+      if (!currentKpi) continue;
+
+      const targetMetrics = monthTarget.metrics;
+      const currentMetrics = currentKpi.metrics;
+
+      // Calculate what needs to be deleted (negative deltas)
+      const deletions = {
+        activities: Math.max(0, (currentMetrics.activitiesCreated ?? 0) - (targetMetrics.activitiesCreated ?? currentMetrics.activitiesCreated ?? 0)),
+        deals: Math.max(0, (currentMetrics.dealsCreated ?? 0) - (targetMetrics.dealsCreated ?? currentMetrics.dealsCreated ?? 0)),
+        contacts: Math.max(0, (currentMetrics.contactsCreated ?? 0) - (targetMetrics.contactsCreated ?? currentMetrics.contactsCreated ?? 0)),
+        companies: Math.max(0, (currentMetrics.companiesCreated ?? 0) - (targetMetrics.companiesCreated ?? currentMetrics.companiesCreated ?? 0)),
+        closedWonValue: Math.max(0, (currentMetrics.closedWonValue ?? 0) - (targetMetrics.closedWonValue ?? currentMetrics.closedWonValue ?? 0)),
+        closedWonCount: Math.max(0, (currentMetrics.closedWonCount ?? 0) - (targetMetrics.closedWonCount ?? currentMetrics.closedWonCount ?? 0)),
+      };
+
+      // Skip if nothing to delete
+      if (Object.values(deletions).every(v => v === 0)) continue;
+
+      await this.log('info', `Reconcile ${monthTarget.month}: deleting ${JSON.stringify(deletions)}`);
+
+      // Delete in FK-safe order: activities → deals → contacts → companies
+      // 1. Delete activities
+      if (deletions.activities > 0) {
+        const deleted = await this.deleteActivitiesForMonth(monthTarget.month, deletions.activities);
+        this.metrics.recordsDeleted += deleted;
+        this.metrics.byEntity.activities.deleted += deleted;
+      }
+
+      // 2. Delete deals (for count reduction)
+      if (deletions.deals > 0) {
+        const deleted = await this.deleteDealsForMonth(monthTarget.month, deletions.deals);
+        this.metrics.recordsDeleted += deleted;
+        this.metrics.byEntity.deals.deleted += deleted;
+      }
+      // 2b. Delete won deals for value reduction (if closedWonValue needs reduction but deals count is ok)
+      else if (deletions.closedWonValue > 0 || deletions.closedWonCount > 0) {
+        const deleted = await this.deleteWonDealsForValue(
+          monthTarget.month,
+          deletions.closedWonValue,
+          deletions.closedWonCount
+        );
+        this.metrics.recordsDeleted += deleted;
+        this.metrics.byEntity.deals.deleted += deleted;
+      }
+
+      // 3. Delete contacts
+      if (deletions.contacts > 0) {
+        const deleted = await this.deleteContactsForMonth(monthTarget.month, deletions.contacts);
+        this.metrics.recordsDeleted += deleted;
+        this.metrics.byEntity.contacts.deleted += deleted;
+      }
+
+      // 4. Delete companies
+      if (deletions.companies > 0) {
+        const deleted = await this.deleteCompaniesForMonth(monthTarget.month, deletions.companies);
+        this.metrics.recordsDeleted += deleted;
+        this.metrics.byEntity.companies.deleted += deleted;
+      }
+    }
+  }
+
+  /**
+   * Delete activities for a specific month
+   */
+  private async deleteActivitiesForMonth(month: string, count: number): Promise<number> {
+    if (!this.ctx || count <= 0) return 0;
+
+    // Find activities to delete (newest first, demo-generated only, from this month)
+    const toDelete = await db.select({ id: activities.id })
+      .from(activities)
+      .where(
+        and(
+          eq(activities.tenantId, this.ctx.tenantId),
+          eq(activities.demoGenerated, true),
+          eq(activities.demoSourceMonth, month)
+        )
+      )
+      .orderBy(sql`${activities.createdAt} DESC`)
+      .limit(count);
+
+    if (toDelete.length === 0) return 0;
+
+    const ids = toDelete.map(r => r.id);
+    await db.delete(activities)
+      .where(
+        and(
+          eq(activities.tenantId, this.ctx.tenantId),
+          inArray(activities.id, ids)
+        )
+      );
+
+    await this.log('info', `Deleted ${toDelete.length} activities for ${month}`);
+    return toDelete.length;
+  }
+
+  /**
+   * Delete deals for a specific month (by count)
+   */
+  private async deleteDealsForMonth(month: string, count: number): Promise<number> {
+    if (!this.ctx || count <= 0) return 0;
+
+    // Find deals to delete (newest first, demo-generated only, from this month)
+    const toDelete = await db.select({ id: deals.id })
+      .from(deals)
+      .where(
+        and(
+          eq(deals.tenantId, this.ctx.tenantId),
+          eq(deals.demoGenerated, true),
+          eq(deals.demoSourceMonth, month)
+        )
+      )
+      .orderBy(sql`${deals.createdAt} DESC`)
+      .limit(count);
+
+    if (toDelete.length === 0) return 0;
+
+    const ids = toDelete.map(r => r.id);
+    await db.delete(deals)
+      .where(
+        and(
+          eq(deals.tenantId, this.ctx.tenantId),
+          inArray(deals.id, ids)
+        )
+      );
+
+    await this.log('info', `Deleted ${toDelete.length} deals for ${month}`);
+    return toDelete.length;
+  }
+
+  /**
+   * Delete won deals to reduce closedWonValue
+   */
+  private async deleteWonDealsForValue(
+    month: string,
+    valueToReduce: number,
+    countToReduce: number
+  ): Promise<number> {
+    if (!this.ctx || (valueToReduce <= 0 && countToReduce <= 0)) return 0;
+
+    // Find won deals (smallest value first to minimize count impact)
+    const wonDeals = await db.select({ id: deals.id, value: deals.value })
+      .from(deals)
+      .where(
+        and(
+          eq(deals.tenantId, this.ctx.tenantId),
+          eq(deals.demoGenerated, true),
+          eq(deals.demoSourceMonth, month),
+          inArray(deals.stageId, this.ctx.wonStageIds)
+        )
+      )
+      .orderBy(sql`CAST(${deals.value} AS numeric) ASC`);
+
+    if (wonDeals.length === 0) return 0;
+
+    // Select deals to delete until we meet the reduction targets
+    const toDelete: string[] = [];
+    let deletedValue = 0;
+    let deletedCount = 0;
+
+    for (const deal of wonDeals) {
+      const dealValue = deal.value ? parseFloat(deal.value) : 0;
+
+      // Check if we've met both targets
+      if (deletedValue >= valueToReduce && deletedCount >= countToReduce) break;
+
+      toDelete.push(deal.id);
+      deletedValue += dealValue;
+      deletedCount++;
+    }
+
+    if (toDelete.length === 0) return 0;
+
+    await db.delete(deals)
+      .where(
+        and(
+          eq(deals.tenantId, this.ctx.tenantId),
+          inArray(deals.id, toDelete)
+        )
+      );
+
+    await this.log('info', `Deleted ${toDelete.length} won deals ($${deletedValue.toFixed(2)}) for ${month}`);
+    return toDelete.length;
+  }
+
+  /**
+   * Delete contacts for a specific month
+   */
+  private async deleteContactsForMonth(month: string, count: number): Promise<number> {
+    if (!this.ctx || count <= 0) return 0;
+
+    // Find contacts to delete (newest first, demo-generated only, from this month)
+    // Exclude contacts that have deals or activities referencing them
+    const toDelete = await db.select({ id: contacts.id })
+      .from(contacts)
+      .where(
+        and(
+          eq(contacts.tenantId, this.ctx.tenantId),
+          eq(contacts.demoGenerated, true),
+          eq(contacts.demoSourceMonth, month),
+          // Exclude contacts with remaining deals
+          sql`NOT EXISTS (SELECT 1 FROM deals WHERE deals.contact_id = contacts.id AND deals.tenant_id = ${this.ctx.tenantId})`,
+          // Exclude contacts with remaining activities
+          sql`NOT EXISTS (SELECT 1 FROM activities WHERE activities.contact_id = contacts.id AND activities.tenant_id = ${this.ctx.tenantId})`
+        )
+      )
+      .orderBy(sql`${contacts.createdAt} DESC`)
+      .limit(count);
+
+    if (toDelete.length === 0) return 0;
+
+    const ids = toDelete.map(r => r.id);
+    await db.delete(contacts)
+      .where(
+        and(
+          eq(contacts.tenantId, this.ctx.tenantId),
+          inArray(contacts.id, ids)
+        )
+      );
+
+    await this.log('info', `Deleted ${toDelete.length} contacts for ${month}`);
+    return toDelete.length;
+  }
+
+  /**
+   * Delete companies for a specific month
+   */
+  private async deleteCompaniesForMonth(month: string, count: number): Promise<number> {
+    if (!this.ctx || count <= 0) return 0;
+
+    // Find companies to delete (newest first, demo-generated only, from this month)
+    // Exclude companies that have contacts or deals referencing them
+    const toDelete = await db.select({ id: companies.id })
+      .from(companies)
+      .where(
+        and(
+          eq(companies.tenantId, this.ctx.tenantId),
+          eq(companies.demoGenerated, true),
+          eq(companies.demoSourceMonth, month),
+          // Exclude companies with remaining contacts
+          sql`NOT EXISTS (SELECT 1 FROM contacts WHERE contacts.company_id = companies.id AND contacts.tenant_id = ${this.ctx.tenantId})`,
+          // Exclude companies with remaining deals
+          sql`NOT EXISTS (SELECT 1 FROM deals WHERE deals.company_id = companies.id AND deals.tenant_id = ${this.ctx.tenantId})`
+        )
+      )
+      .orderBy(sql`${companies.createdAt} DESC`)
+      .limit(count);
+
+    if (toDelete.length === 0) return 0;
+
+    const ids = toDelete.map(r => r.id);
+    await db.delete(companies)
+      .where(
+        and(
+          eq(companies.tenantId, this.ctx.tenantId),
+          inArray(companies.id, ids)
+        )
+      );
+
+    await this.log('info', `Deleted ${toDelete.length} companies for ${month}`);
+    return toDelete.length;
   }
 
   /**

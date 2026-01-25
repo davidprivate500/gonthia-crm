@@ -118,6 +118,7 @@ export default function MonthlyUpdatesPage() {
 
   // Create patch state
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
+  const [patchMode, setPatchMode] = useState<'additive' | 'reconcile'>('additive');
   const [monthTargets, setMonthTargets] = useState<MonthTargetInput[]>([]);
   const [isLoadingKpis, setIsLoadingKpis] = useState(false);
 
@@ -263,6 +264,11 @@ export default function MonthlyUpdatesPage() {
     setValidationResult(null);
   };
 
+  // Reset validation when mode changes
+  useEffect(() => {
+    setValidationResult(null);
+  }, [patchMode]);
+
   // Check if a value has changed from original
   const hasChanged = (monthIdx: number, metric: keyof TargetMetrics): boolean => {
     const month = monthTargets[monthIdx];
@@ -308,7 +314,7 @@ export default function MonthlyUpdatesPage() {
 
     try {
       const response = await api.master.demoGenerator.validatePatch(selectedTenantId, {
-        mode: 'additive',
+        mode: patchMode,
         planType: 'targets',
         months: monthsWithChanges,
       });
@@ -332,7 +338,7 @@ export default function MonthlyUpdatesPage() {
 
     try {
       const response = await api.master.demoGenerator.applyPatch(selectedTenantId, {
-        mode: 'additive',
+        mode: patchMode,
         planType: 'targets',
         months: monthsWithChanges,
       });
@@ -471,13 +477,79 @@ export default function MonthlyUpdatesPage() {
                   </CardContent>
                 </Card>
 
+                {/* Mode Selection */}
+                {selectedTenantId && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Update Mode</CardTitle>
+                      <CardDescription>
+                        Choose how changes are applied to the demo tenant.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex gap-4">
+                        <button
+                          onClick={() => setPatchMode('additive')}
+                          className={`flex-1 p-4 rounded-lg border-2 text-left transition-colors ${
+                            patchMode === 'additive'
+                              ? 'border-green-500 bg-green-50'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <Plus className="h-5 w-5 text-green-600" />
+                            <span className="font-semibold">Additive Mode</span>
+                            {patchMode === 'additive' && (
+                              <Badge className="bg-green-100 text-green-700">Selected</Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600">
+                            Only add new records. Values can only increase.
+                          </p>
+                        </button>
+                        <button
+                          onClick={() => setPatchMode('reconcile')}
+                          className={`flex-1 p-4 rounded-lg border-2 text-left transition-colors ${
+                            patchMode === 'reconcile'
+                              ? 'border-amber-500 bg-amber-50'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <RefreshCw className="h-5 w-5 text-amber-600" />
+                            <span className="font-semibold">Reconcile Mode</span>
+                            {patchMode === 'reconcile' && (
+                              <Badge className="bg-amber-100 text-amber-700">Selected</Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600">
+                            Add or remove records. Values can increase or decrease.
+                          </p>
+                        </button>
+                      </div>
+                      {patchMode === 'reconcile' && (
+                        <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                          <div className="flex items-center gap-2 text-amber-700 font-medium">
+                            <AlertTriangle className="h-4 w-4" />
+                            Reconcile Mode Warning
+                          </div>
+                          <p className="text-sm text-amber-600 mt-1">
+                            This mode will <strong>delete demo-generated records</strong> to match lower target values.
+                            Only demo data is affected - manually created records are preserved.
+                          </p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Metrics Grid */}
                 {selectedTenantId && (
                   <Card>
                     <CardHeader>
                       <CardTitle>Monthly Metrics</CardTitle>
                       <CardDescription>
-                        Edit values directly. Green highlight = increase, yellow = cannot decrease in additive mode.
+                        Edit values directly. Green = increase, {patchMode === 'additive' ? 'yellow = cannot decrease in additive mode' : 'red = will delete records'}.
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -527,14 +599,20 @@ export default function MonthlyUpdatesPage() {
                                             className={`text-right h-9 pr-2 ${
                                               changed
                                                 ? isDecrease
-                                                  ? 'border-yellow-400 bg-yellow-50'
+                                                  ? patchMode === 'reconcile'
+                                                    ? 'border-red-400 bg-red-50'
+                                                    : 'border-yellow-400 bg-yellow-50'
                                                   : 'border-green-400 bg-green-50'
                                                 : ''
                                             }`}
                                           />
                                           {changed && (
                                             <span className={`absolute -top-2 -right-1 text-xs font-medium px-1 rounded ${
-                                              isDecrease ? 'text-yellow-600' : 'text-green-600'
+                                              isDecrease
+                                                ? patchMode === 'reconcile'
+                                                  ? 'text-red-600'
+                                                  : 'text-yellow-600'
+                                                : 'text-green-600'
                                             }`}>
                                               {delta > 0 ? '+' : ''}{delta.toLocaleString()}
                                             </span>
@@ -726,7 +804,12 @@ export default function MonthlyUpdatesPage() {
                               {job.tenantName || job.tenantId.slice(0, 8)}
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline">{job.planType}</Badge>
+                              <Badge
+                                variant="outline"
+                                className={job.mode === 'reconcile' ? 'border-amber-500 text-amber-700' : ''}
+                              >
+                                {job.mode === 'reconcile' ? 'reconcile' : 'additive'}
+                              </Badge>
                             </TableCell>
                             <TableCell>
                               {formatMonthLabel(job.rangeStartMonth)} - {formatMonthLabel(job.rangeEndMonth)}

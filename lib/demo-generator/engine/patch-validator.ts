@@ -282,7 +282,11 @@ export function computeDeltas(
             `${monthTarget.month}: Cannot reduce ${metric} from ${currentValue} to ${value} in ADDITIVE mode.`
           );
           monthDeltas[metric] = 0; // Set to 0, blocker will prevent execution
+        } else if (plan.mode === 'reconcile') {
+          // Reconcile mode: allow negative deltas (deletions)
+          monthDeltas[metric] = delta;
         } else {
+          // Additive mode: only positive deltas
           monthDeltas[metric] = Math.max(0, delta);
         }
       } else {
@@ -318,40 +322,60 @@ export function generatePreview(
   const warnings: string[] = [];
   const blockers: string[] = [];
 
-  // Estimate records to be created
-  let totalContacts = 0;
-  let totalCompanies = 0;
-  let totalDeals = 0;
-  let totalActivities = 0;
+  // Estimate records to be created (positive deltas) and deleted (negative deltas)
+  let createContacts = 0;
+  let createCompanies = 0;
+  let createDeals = 0;
+  let createActivities = 0;
+  let deleteContacts = 0;
+  let deleteCompanies = 0;
+  let deleteDeals = 0;
+  let deleteActivities = 0;
 
   for (const delta of deltas) {
-    totalContacts += delta.metrics.contactsCreated ?? 0;
-    totalCompanies += delta.metrics.companiesCreated ?? 0;
-    totalDeals += delta.metrics.dealsCreated ?? 0;
+    const contacts = delta.metrics.contactsCreated ?? 0;
+    const companies = delta.metrics.companiesCreated ?? 0;
+    const deals = delta.metrics.dealsCreated ?? 0;
+
+    if (contacts > 0) createContacts += contacts;
+    else deleteContacts += Math.abs(contacts);
+
+    if (companies > 0) createCompanies += companies;
+    else deleteCompanies += Math.abs(companies);
+
+    if (deals > 0) createDeals += deals;
+    else deleteDeals += Math.abs(deals);
 
     // Estimate activities: ~2 per contact
-    const contactDelta = delta.metrics.contactsCreated ?? 0;
-    totalActivities += Math.round(contactDelta * 2);
+    if (contacts > 0) createActivities += Math.round(contacts * 2);
+    else deleteActivities += Math.round(Math.abs(contacts) * 2);
   }
 
   // Check for zero-delta patches
-  const totalRecords = totalContacts + totalCompanies + totalDeals + totalActivities;
-  if (totalRecords === 0) {
-    warnings.push('This patch will not create any records. All metrics are already at target levels.');
+  const totalCreate = createContacts + createCompanies + createDeals + createActivities;
+  const totalDelete = deleteContacts + deleteCompanies + deleteDeals + deleteActivities;
+
+  if (totalCreate === 0 && totalDelete === 0) {
+    warnings.push('This patch will not create or delete any records. All metrics are already at target levels.');
   }
 
   // Check for large patches
-  if (totalRecords > 10000) {
-    warnings.push(`Large patch: ${totalRecords} records will be created. This may take several minutes.`);
+  if (totalCreate > 10000) {
+    warnings.push(`Large patch: ${totalCreate} records will be created. This may take several minutes.`);
+  }
+
+  // Warn about reconcile deletions
+  if (totalDelete > 0) {
+    warnings.push(`Reconcile mode: ${totalDelete} demo-generated records will be deleted.`);
   }
 
   return {
     computedDeltas: deltas,
     estimatedRecords: {
-      contacts: totalContacts,
-      companies: totalCompanies,
-      deals: totalDeals,
-      activities: totalActivities,
+      contacts: createContacts,
+      companies: createCompanies,
+      deals: createDeals,
+      activities: createActivities,
     },
     warnings,
     blockers,
