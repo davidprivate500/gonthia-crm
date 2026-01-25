@@ -1,0 +1,66 @@
+sprint:
+  name: "Demo Client Generator v3 - Patching Feature"
+  start_date: "2025-01-23"
+  end_date: null
+  status: "in_progress"
+
+epics:
+  - id: "E1"
+    name: "Demo Tenant Patch System"
+    status: "completed"
+    stories:
+      - id: "E1-S1"
+        name: "Implement additive patch mode"
+        status: "completed"
+        completed_at: "2025-01-23"
+      - id: "E1-S2"
+        name: "Monthly Updates UI (TARGETS mode)"
+        status: "completed"
+        completed_at: "2025-01-23"
+
+  - id: "E2"
+    name: "RECONCILE Mode Implementation"
+    status: "completed"
+    stories:
+      - id: "E2-S1"
+        name: "Implement RECONCILE mode in patch engine"
+        status: "completed"
+        completed_at: "2025-01-25"
+        notes: |
+          - Added executeReconcileDeletions() method
+          - FK-safe deletion order: activities → deals → contacts → companies
+          - NOT EXISTS guards for referential integrity
+          - Only deletes demoGenerated=true records
+      - id: "E2-S2"
+        name: "Update patch validator for reconcile mode"
+        status: "completed"
+        completed_at: "2025-01-25"
+        notes: |
+          - Allow negative deltas in reconcile mode
+          - Updated preview to show records to delete
+      - id: "E2-S3"
+        name: "Add mode selector UI"
+        status: "completed"
+        completed_at: "2025-01-25"
+        notes: |
+          - Visual toggle between additive/reconcile
+          - Warning banner for reconcile mode
+          - Red highlighting for decreasing values
+
+blockers: []
+
+risks:
+  - description: "Accidental data loss if reconcile mode misused"
+    mitigation: "Only deletes demo-generated records; clear UI warning"
+    status: "mitigated"
+
+notes: |
+  RECONCILE mode feature complete and deployed.
+  Commit: a2425b6
+
+  Key features:
+  - Users can now decrease metric values in demo tenants
+  - Deletions only affect demo-generated records (demoGenerated=true)
+  - Records filtered by demoSourceMonth for month-specific targeting
+  - FK-safe deletion order prevents referential integrity issues
+  - Clear UI indication and warning for destructive operations
