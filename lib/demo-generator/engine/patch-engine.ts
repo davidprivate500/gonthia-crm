@@ -515,7 +515,7 @@ export class PatchEngine {
   }
 
   /**
-   * Delete won deals to reduce closedWonValue
+   * Reduce won deals value - either by deleting deals or adjusting values
    */
   private async deleteWonDealsForValue(
     month: string,
@@ -545,14 +545,43 @@ export class PatchEngine {
       )
       .orderBy(sql`CAST(${deals.value} AS numeric) ASC`);
 
-    console.log(`[PatchEngine] Found ${wonDeals.length} won deals for deletion`);
+    console.log(`[PatchEngine] Found ${wonDeals.length} won deals`);
 
     if (wonDeals.length === 0) {
       console.log(`[PatchEngine] No won deals found in date range for month ${month}`);
       return 0;
     }
 
-    // Select deals to delete until we meet the reduction targets
+    // Calculate total current value
+    const totalCurrentValue = wonDeals.reduce((sum, d) => sum + (d.value ? parseFloat(d.value) : 0), 0);
+    const targetValue = totalCurrentValue - valueToReduce;
+    console.log(`[PatchEngine] Total current value: ${totalCurrentValue}, target value: ${targetValue}`);
+
+    // Strategy: If we only need to reduce VALUE (not count), update the largest deal instead of deleting
+    if (countToReduce === 0 && valueToReduce > 0) {
+      // Find the largest deal to adjust
+      const largestDeal = wonDeals[wonDeals.length - 1];
+      const largestDealValue = largestDeal.value ? parseFloat(largestDeal.value) : 0;
+
+      // Calculate new value for this deal
+      const newValue = Math.max(0, largestDealValue - valueToReduce);
+
+      console.log(`[PatchEngine] Adjusting deal ${largestDeal.id} value from ${largestDealValue} to ${newValue}`);
+
+      await db.update(deals)
+        .set({
+          value: String(Math.round(newValue * 100) / 100),
+          updatedAt: new Date()
+        })
+        .where(eq(deals.id, largestDeal.id));
+
+      await this.log('info', `Adjusted won deal value from $${largestDealValue.toFixed(2)} to $${newValue.toFixed(2)} for ${month}`);
+      this.metrics.recordsModified++;
+      this.metrics.byEntity.deals.modified = (this.metrics.byEntity.deals.modified || 0) + 1;
+      return 0; // No deletions, just modification
+    }
+
+    // If we need to reduce COUNT, delete deals
     const toDelete: string[] = [];
     let deletedValue = 0;
     let deletedCount = 0;
@@ -561,7 +590,7 @@ export class PatchEngine {
       const dealValue = deal.value ? parseFloat(deal.value) : 0;
 
       // Check if we've met both targets
-      if (deletedValue >= valueToReduce && deletedCount >= countToReduce) break;
+      if (deletedCount >= countToReduce && deletedValue >= valueToReduce) break;
 
       toDelete.push(deal.id);
       deletedValue += dealValue;
