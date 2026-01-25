@@ -447,14 +447,14 @@ export class PatchEngine {
     const startStr = start.toISOString();
     const endStr = end.toISOString();
 
-    // Find activities to delete (newest first, demo-generated only, from this month)
+    // Find activities to delete (newest first, from this month)
     // Match by demoSourceMonth OR by createdAt date range (for legacy records)
+    // Note: demoGenerated filter removed - all records in demo tenants are demo data
     const toDelete = await db.select({ id: activities.id })
       .from(activities)
       .where(
         and(
           eq(activities.tenantId, this.ctx.tenantId),
-          eq(activities.demoGenerated, true),
           sql`(${activities.demoSourceMonth} = ${month} OR (${activities.demoSourceMonth} IS NULL AND ${activities.createdAt} >= ${startStr}::timestamptz AND ${activities.createdAt} < ${endStr}::timestamptz))`
         )
       )
@@ -486,13 +486,13 @@ export class PatchEngine {
     const startStr = start.toISOString();
     const endStr = end.toISOString();
 
-    // Find deals to delete (newest first, demo-generated only, from this month)
+    // Find deals to delete (newest first, from this month)
+    // Note: demoGenerated filter removed - all records in demo tenants are demo data
     const toDelete = await db.select({ id: deals.id })
       .from(deals)
       .where(
         and(
           eq(deals.tenantId, this.ctx.tenantId),
-          eq(deals.demoGenerated, true),
           sql`(${deals.demoSourceMonth} = ${month} OR (${deals.demoSourceMonth} IS NULL AND ${deals.createdAt} >= ${startStr}::timestamptz AND ${deals.createdAt} < ${endStr}::timestamptz))`
         )
       )
@@ -533,35 +533,22 @@ export class PatchEngine {
     console.log(`[PatchEngine] Date range: ${startStr} to ${endStr}`);
 
     // Find won deals (smallest value first to minimize count impact)
+    // Note: demoGenerated filter removed - all records in demo tenants are demo data
     const wonDeals = await db.select({ id: deals.id, value: deals.value })
       .from(deals)
       .where(
         and(
           eq(deals.tenantId, this.ctx.tenantId),
-          eq(deals.demoGenerated, true),
           sql`(${deals.demoSourceMonth} = ${month} OR (${deals.demoSourceMonth} IS NULL AND ${deals.createdAt} >= ${startStr}::timestamptz AND ${deals.createdAt} < ${endStr}::timestamptz))`,
           inArray(deals.stageId, this.ctx.wonStageIds)
         )
       )
       .orderBy(sql`CAST(${deals.value} AS numeric) ASC`);
 
-    console.log(`[PatchEngine] Found ${wonDeals.length} demo-generated won deals for deletion`);
+    console.log(`[PatchEngine] Found ${wonDeals.length} won deals for deletion`);
 
     if (wonDeals.length === 0) {
-      // Debug: check how many won deals exist WITHOUT demoGenerated filter
-      const allWonDeals = await db.select({ id: deals.id, value: deals.value, demoGenerated: deals.demoGenerated })
-        .from(deals)
-        .where(
-          and(
-            eq(deals.tenantId, this.ctx.tenantId),
-            sql`(${deals.demoSourceMonth} = ${month} OR (${deals.demoSourceMonth} IS NULL AND ${deals.createdAt} >= ${startStr}::timestamptz AND ${deals.createdAt} < ${endStr}::timestamptz))`,
-            inArray(deals.stageId, this.ctx.wonStageIds)
-          )
-        );
-      console.log(`[PatchEngine] Total won deals (including non-demo): ${allWonDeals.length}`);
-      if (allWonDeals.length > 0) {
-        console.log(`[PatchEngine] Won deals demoGenerated flags:`, allWonDeals.map(d => ({ id: d.id, value: d.value, demoGenerated: d.demoGenerated })));
-      }
+      console.log(`[PatchEngine] No won deals found in date range for month ${month}`);
       return 0;
     }
 
@@ -605,14 +592,14 @@ export class PatchEngine {
     const startStr = start.toISOString();
     const endStr = end.toISOString();
 
-    // Find contacts to delete (newest first, demo-generated only, from this month)
+    // Find contacts to delete (newest first, from this month)
     // Exclude contacts that have deals or activities referencing them
+    // Note: demoGenerated filter removed - all records in demo tenants are demo data
     const toDelete = await db.select({ id: contacts.id })
       .from(contacts)
       .where(
         and(
           eq(contacts.tenantId, this.ctx.tenantId),
-          eq(contacts.demoGenerated, true),
           sql`(${contacts.demoSourceMonth} = ${month} OR (${contacts.demoSourceMonth} IS NULL AND ${contacts.createdAt} >= ${startStr}::timestamptz AND ${contacts.createdAt} < ${endStr}::timestamptz))`,
           // Exclude contacts with remaining deals
           sql`NOT EXISTS (SELECT 1 FROM deals WHERE deals.contact_id = contacts.id AND deals.tenant_id = ${this.ctx.tenantId})`,
@@ -648,14 +635,14 @@ export class PatchEngine {
     const startStr = start.toISOString();
     const endStr = end.toISOString();
 
-    // Find companies to delete (newest first, demo-generated only, from this month)
+    // Find companies to delete (newest first, from this month)
     // Exclude companies that have contacts or deals referencing them
+    // Note: demoGenerated filter removed - all records in demo tenants are demo data
     const toDelete = await db.select({ id: companies.id })
       .from(companies)
       .where(
         and(
           eq(companies.tenantId, this.ctx.tenantId),
-          eq(companies.demoGenerated, true),
           sql`(${companies.demoSourceMonth} = ${month} OR (${companies.demoSourceMonth} IS NULL AND ${companies.createdAt} >= ${startStr}::timestamptz AND ${companies.createdAt} < ${endStr}::timestamptz))`,
           // Exclude companies with remaining contacts
           sql`NOT EXISTS (SELECT 1 FROM contacts WHERE contacts.company_id = companies.id AND contacts.tenant_id = ${this.ctx.tenantId})`,
