@@ -102,32 +102,31 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       logs: [],
     }).returning();
 
-    // Start patch execution asynchronously
+    // Execute patch synchronously (wait for completion)
     console.log(`[Patch] Starting execution for job ${job.id}`);
     const engine = new PatchEngine(job.id);
-    engine.execute()
-      .then(() => {
-        console.log(`[Patch] Execution completed for job ${job.id}`);
-      })
-      .catch((error) => {
-        console.error(`[Patch] Execution failed for job ${job.id}:`, error);
-      });
 
-    // Estimate execution time
-    const totalRecords = plan.months.reduce((sum, m) => {
-      return sum + (m.metrics.contactsCreated ?? 0) +
-        (m.metrics.companiesCreated ?? 0) +
-        (m.metrics.dealsCreated ?? 0);
-    }, 0);
-    const estimatedSeconds = Math.max(10, Math.ceil(totalRecords / 100) + plan.months.length * 2);
+    try {
+      await engine.execute();
+      console.log(`[Patch] Execution completed for job ${job.id}`);
+    } catch (error) {
+      console.error(`[Patch] Execution failed for job ${job.id}:`, error);
+      // Error is already handled by PatchEngine.handleError()
+    }
+
+    // Fetch final job status
+    const finalJob = await db.query.demoPatchJobs.findFirst({
+      where: eq(demoPatchJobs.id, job.id),
+    });
 
     return successResponse({
       jobId: job.id,
-      status: 'running',
+      status: finalJob?.status ?? 'unknown',
       seed,
       rangeStartMonth,
       rangeEndMonth,
-      estimatedSeconds,
+      progress: finalJob?.progress ?? 0,
+      currentStep: finalJob?.currentStep ?? 'Unknown',
     });
   } catch (error) {
     console.error('Apply patch error:', error);
