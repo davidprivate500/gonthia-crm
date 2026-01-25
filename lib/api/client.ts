@@ -317,6 +317,14 @@ export const api = {
         masterApiFetch(`/demo-generator/patch-jobs?${buildSearchParams(params as Record<string, string | number | undefined>)}`),
     },
 
+    // Reports (cross-tenant analytics)
+    reports: {
+      metrics: (params?: { preset?: string; from?: string; to?: string; tenantId?: string }) =>
+        masterApiFetch(`/reports/metrics?${buildSearchParams(params)}`),
+      monthly: (params?: { preset?: string; from?: string; to?: string; tenantId?: string }) =>
+        masterApiFetch(`/reports/monthly?${buildSearchParams(params)}`),
+    },
+
     // Impersonation
     impersonate: (tenantId: string) =>
       masterApiFetch<{ success: boolean; message: string; redirectUrl: string; tenantName: string }>(

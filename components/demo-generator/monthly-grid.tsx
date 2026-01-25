@@ -3,8 +3,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
 
 export interface MonthlyMetricTargets {
@@ -89,7 +87,7 @@ export function MonthlyGrid({ months, onChange, errors = {} }: MonthlyGridProps)
   }, [months]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Navigation */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -116,19 +114,19 @@ export function MonthlyGrid({ months, onChange, errors = {} }: MonthlyGridProps)
       </div>
 
       {/* Grid */}
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
+      <div className="border rounded-md">
+        <table className="w-full border-collapse text-xs">
           <thead>
             <tr className="bg-gray-50">
-              <th className="p-2 text-left font-medium text-gray-600 border sticky left-0 bg-gray-50 z-10">
+              <th className="px-3 py-2 text-left font-medium text-gray-600 border">
                 Metric
               </th>
               {visibleMonths.map((month) => (
-                <th key={month.month} className="p-2 text-center font-medium text-gray-600 border min-w-[100px]">
+                <th key={month.month} className="px-3 py-2 text-center font-medium text-gray-600 border min-w-[100px]">
                   {formatMonthLabel(month.month)}
                 </th>
               ))}
-              <th className="p-2 text-center font-medium text-gray-900 border bg-gray-100">
+              <th className="px-3 py-2 text-center font-medium text-gray-900 border bg-gray-100 min-w-[90px]">
                 Total
               </th>
             </tr>
@@ -136,7 +134,7 @@ export function MonthlyGrid({ months, onChange, errors = {} }: MonthlyGridProps)
           <tbody>
             {METRIC_CONFIG.map((metric) => (
               <tr key={metric.key} className="hover:bg-gray-50">
-                <td className="p-2 font-medium text-gray-700 border sticky left-0 bg-white z-10">
+                <td className="px-3 py-1.5 font-medium text-gray-700 border whitespace-nowrap">
                   {metric.label}
                   {metric.type === 'currency' && <span className="text-gray-400 ml-1">($)</span>}
                 </td>
@@ -153,12 +151,12 @@ export function MonthlyGrid({ months, onChange, errors = {} }: MonthlyGridProps)
                         step={metric.type === 'currency' ? 100 : 1}
                         value={value || ''}
                         onChange={(e) => handleValueChange(idx, metric.key as keyof MonthlyMetricTargets, e.target.value)}
-                        className={`text-right h-8 ${hasError ? 'border-red-500 bg-red-50' : ''}`}
+                        className={`text-right h-8 text-sm ${hasError ? 'border-red-500 bg-red-50' : ''}`}
                       />
                     </td>
                   );
                 })}
-                <td className="p-2 text-right font-medium border bg-gray-50">
+                <td className="px-3 py-1.5 text-right font-semibold border bg-gray-50 whitespace-nowrap">
                   {metric.type === 'currency' ? '$' : ''}
                   {formatValue(totals[metric.key], metric.type)}
                 </td>
@@ -170,49 +168,45 @@ export function MonthlyGrid({ months, onChange, errors = {} }: MonthlyGridProps)
 
       {/* Validation Errors */}
       {Object.keys(errors).length > 0 && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-          <div className="flex items-center gap-2 text-red-700 font-medium mb-2">
-            <AlertCircle className="h-4 w-4" />
+        <div className="p-2 bg-red-50 border border-red-200 rounded-md">
+          <div className="flex items-center gap-2 text-red-700 font-medium text-xs mb-1">
+            <AlertCircle className="h-3 w-3" />
             Validation Errors
           </div>
-          <ul className="text-sm text-red-600 list-disc list-inside space-y-1">
-            {Object.entries(errors).slice(0, 5).map(([key, msg]) => (
+          <ul className="text-xs text-red-600 list-disc list-inside space-y-0.5">
+            {Object.entries(errors).slice(0, 3).map(([key, msg]) => (
               <li key={key}>{msg}</li>
             ))}
-            {Object.keys(errors).length > 5 && (
-              <li className="text-gray-500">...and {Object.keys(errors).length - 5} more errors</li>
+            {Object.keys(errors).length > 3 && (
+              <li className="text-gray-500">...and {Object.keys(errors).length - 3} more</li>
             )}
           </ul>
         </div>
       )}
 
       {/* Summary */}
-      <Card className="bg-gray-50">
-        <CardContent className="pt-4">
-          <div className="grid grid-cols-4 gap-4 text-sm">
-            <div>
-              <div className="text-gray-500">Total Contacts</div>
-              <div className="font-semibold">{totals.contactsCreated.toLocaleString()}</div>
-            </div>
-            <div>
-              <div className="text-gray-500">Total Deals</div>
-              <div className="font-semibold">{totals.dealsCreated.toLocaleString()}</div>
-            </div>
-            <div>
-              <div className="text-gray-500">Total Won Value</div>
-              <div className="font-semibold">${totals.closedWonValue.toLocaleString()}</div>
-            </div>
-            <div>
-              <div className="text-gray-500">Avg Win Rate</div>
-              <div className="font-semibold">
-                {totals.dealsCreated > 0
-                  ? Math.round((totals.closedWonCount / totals.dealsCreated) * 100)
-                  : 0}%
-              </div>
-            </div>
+      <div className="grid grid-cols-4 gap-4 text-sm p-3 bg-gray-50 rounded-md border">
+        <div>
+          <div className="text-gray-500 text-xs">Total Contacts</div>
+          <div className="font-semibold">{totals.contactsCreated.toLocaleString()}</div>
+        </div>
+        <div>
+          <div className="text-gray-500 text-xs">Total Deals</div>
+          <div className="font-semibold">{totals.dealsCreated.toLocaleString()}</div>
+        </div>
+        <div>
+          <div className="text-gray-500 text-xs">Total Won Value</div>
+          <div className="font-semibold">${totals.closedWonValue.toLocaleString()}</div>
+        </div>
+        <div>
+          <div className="text-gray-500 text-xs">Avg Win Rate</div>
+          <div className="font-semibold">
+            {totals.dealsCreated > 0
+              ? Math.round((totals.closedWonCount / totals.dealsCreated) * 100)
+              : 0}%
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

@@ -283,7 +283,7 @@ export default function DemoGeneratorPage() {
                 Generate Demo Client
               </Button>
             </DialogTrigger>
-            <DialogContent className={mode === 'monthly' ? 'max-w-4xl max-h-[90vh] overflow-y-auto' : 'max-w-2xl'}>
+            <DialogContent className={mode === 'monthly' ? 'max-w-6xl w-[90vw]' : 'max-w-2xl'}>
               <DialogHeader>
                 <DialogTitle>Generate Demo Client</DialogTitle>
                 <DialogDescription>
@@ -502,7 +502,6 @@ export default function DemoGeneratorPage() {
                           <p className="font-medium mb-1">Monthly Plan Mode</p>
                           <p>Define exact monthly targets for precise control over generated data.</p>
                           <p>Counts will match exactly; values match within 0.5% tolerance.</p>
-                          <p>A verification report will be generated after completion.</p>
                         </div>
                       </CardContent>
                     </Card>
