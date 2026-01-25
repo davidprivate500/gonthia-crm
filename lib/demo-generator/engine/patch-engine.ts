@@ -331,23 +331,23 @@ export class PatchEngine {
   ): Promise<void> {
     if (!this.ctx) throw new Error('Context not loaded');
 
-    // Debug: Log what we're working with
-    await this.log('info', `Plan months: ${plan.months.map(m => m.month).join(', ')}`);
-    await this.log('info', `Current KPI months: ${currentKpis.map(k => k.month).join(', ')}`);
+    // Debug: Log what we're working with (console.log for Vercel visibility)
+    console.log(`[PatchEngine] Plan months: ${plan.months.map(m => m.month).join(', ')}`);
+    console.log(`[PatchEngine] Current KPI months: ${currentKpis.map(k => k.month).join(', ')}`);
 
     for (const monthTarget of plan.months) {
-      await this.log('info', `Processing month: ${monthTarget.month}`);
-      await this.log('info', `Target metrics: ${JSON.stringify(monthTarget.metrics)}`);
+      console.log(`[PatchEngine] Processing month: ${monthTarget.month}`);
+      console.log(`[PatchEngine] Target metrics:`, JSON.stringify(monthTarget.metrics));
 
       const currentKpi = currentKpis.find(k => k.month === monthTarget.month);
       if (!currentKpi) {
-        await this.log('warn', `No current KPI found for month ${monthTarget.month} - skipping`);
+        console.log(`[PatchEngine] WARNING: No current KPI found for month ${monthTarget.month} - skipping`);
         continue;
       }
 
       const targetMetrics = monthTarget.metrics;
       const currentMetrics = currentKpi.metrics;
-      await this.log('info', `Current metrics: ${JSON.stringify(currentMetrics)}`);
+      console.log(`[PatchEngine] Current metrics:`, JSON.stringify(currentMetrics));
 
       // Calculate what needs to be deleted (negative deltas)
       // Only calculate deletion if target is explicitly set (not undefined)
@@ -372,11 +372,11 @@ export class PatchEngine {
           : 0,
       };
 
-      await this.log('info', `Calculated deletions: ${JSON.stringify(deletions)}`);
+      console.log(`[PatchEngine] Calculated deletions:`, JSON.stringify(deletions));
 
       // Skip if nothing to delete
       if (Object.values(deletions).every(v => v === 0)) {
-        await this.log('info', `No deletions needed for ${monthTarget.month} - skipping`);
+        console.log(`[PatchEngine] No deletions needed for ${monthTarget.month} - skipping`);
         continue;
       }
 

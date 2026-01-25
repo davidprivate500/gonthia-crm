@@ -56,11 +56,23 @@ risks:
 
 notes: |
   RECONCILE mode feature complete and deployed.
-  Commit: a2425b6
+
+  Bug fixes (commit 857916b):
+  - CRITICAL: Fixed UTC timezone mismatch in patch-engine date ranges
+  - KPI aggregator used Date.UTC(), patch engine used local time
+  - This caused deletion queries to find no records (wrong date range)
+  - Added date range logging for debugging
+  - Optimized executePatch to skip months with no positive deltas
+
+  Previous fixes (commits a2425b6, 22c2340):
+  - Fixed json/jsonb concatenation: (logs::jsonb || value::jsonb)::json
+  - Added fallback for records without demoSourceMonth field
+  - Changed from async fire-and-forget to synchronous execution
+  - Added maxDuration=300 for Vercel long-running functions
 
   Key features:
   - Users can now decrease metric values in demo tenants
   - Deletions only affect demo-generated records (demoGenerated=true)
-  - Records filtered by demoSourceMonth for month-specific targeting
+  - Records filtered by demoSourceMonth OR createdAt date range
   - FK-safe deletion order prevents referential integrity issues
   - Clear UI indication and warning for destructive operations
