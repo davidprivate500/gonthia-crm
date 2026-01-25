@@ -414,6 +414,9 @@ export class PatchEngine {
     if (!this.ctx || count <= 0) return 0;
 
     const { start, end } = this.getMonthDateRange(month);
+    // Convert to ISO strings for raw SQL (Date objects cause driver errors)
+    const startStr = start.toISOString();
+    const endStr = end.toISOString();
 
     // Find activities to delete (newest first, demo-generated only, from this month)
     // Match by demoSourceMonth OR by createdAt date range (for legacy records)
@@ -423,7 +426,7 @@ export class PatchEngine {
         and(
           eq(activities.tenantId, this.ctx.tenantId),
           eq(activities.demoGenerated, true),
-          sql`(${activities.demoSourceMonth} = ${month} OR (${activities.demoSourceMonth} IS NULL AND ${activities.createdAt} >= ${start} AND ${activities.createdAt} < ${end}))`
+          sql`(${activities.demoSourceMonth} = ${month} OR (${activities.demoSourceMonth} IS NULL AND ${activities.createdAt} >= ${startStr}::timestamptz AND ${activities.createdAt} < ${endStr}::timestamptz))`
         )
       )
       .orderBy(sql`${activities.createdAt} DESC`)
@@ -451,6 +454,8 @@ export class PatchEngine {
     if (!this.ctx || count <= 0) return 0;
 
     const { start, end } = this.getMonthDateRange(month);
+    const startStr = start.toISOString();
+    const endStr = end.toISOString();
 
     // Find deals to delete (newest first, demo-generated only, from this month)
     const toDelete = await db.select({ id: deals.id })
@@ -459,7 +464,7 @@ export class PatchEngine {
         and(
           eq(deals.tenantId, this.ctx.tenantId),
           eq(deals.demoGenerated, true),
-          sql`(${deals.demoSourceMonth} = ${month} OR (${deals.demoSourceMonth} IS NULL AND ${deals.createdAt} >= ${start} AND ${deals.createdAt} < ${end}))`
+          sql`(${deals.demoSourceMonth} = ${month} OR (${deals.demoSourceMonth} IS NULL AND ${deals.createdAt} >= ${startStr}::timestamptz AND ${deals.createdAt} < ${endStr}::timestamptz))`
         )
       )
       .orderBy(sql`${deals.createdAt} DESC`)
@@ -491,6 +496,8 @@ export class PatchEngine {
     if (!this.ctx || (valueToReduce <= 0 && countToReduce <= 0)) return 0;
 
     const { start, end } = this.getMonthDateRange(month);
+    const startStr = start.toISOString();
+    const endStr = end.toISOString();
 
     // Find won deals (smallest value first to minimize count impact)
     const wonDeals = await db.select({ id: deals.id, value: deals.value })
@@ -499,7 +506,7 @@ export class PatchEngine {
         and(
           eq(deals.tenantId, this.ctx.tenantId),
           eq(deals.demoGenerated, true),
-          sql`(${deals.demoSourceMonth} = ${month} OR (${deals.demoSourceMonth} IS NULL AND ${deals.createdAt} >= ${start} AND ${deals.createdAt} < ${end}))`,
+          sql`(${deals.demoSourceMonth} = ${month} OR (${deals.demoSourceMonth} IS NULL AND ${deals.createdAt} >= ${startStr}::timestamptz AND ${deals.createdAt} < ${endStr}::timestamptz))`,
           inArray(deals.stageId, this.ctx.wonStageIds)
         )
       )
@@ -544,6 +551,8 @@ export class PatchEngine {
     if (!this.ctx || count <= 0) return 0;
 
     const { start, end } = this.getMonthDateRange(month);
+    const startStr = start.toISOString();
+    const endStr = end.toISOString();
 
     // Find contacts to delete (newest first, demo-generated only, from this month)
     // Exclude contacts that have deals or activities referencing them
@@ -553,7 +562,7 @@ export class PatchEngine {
         and(
           eq(contacts.tenantId, this.ctx.tenantId),
           eq(contacts.demoGenerated, true),
-          sql`(${contacts.demoSourceMonth} = ${month} OR (${contacts.demoSourceMonth} IS NULL AND ${contacts.createdAt} >= ${start} AND ${contacts.createdAt} < ${end}))`,
+          sql`(${contacts.demoSourceMonth} = ${month} OR (${contacts.demoSourceMonth} IS NULL AND ${contacts.createdAt} >= ${startStr}::timestamptz AND ${contacts.createdAt} < ${endStr}::timestamptz))`,
           // Exclude contacts with remaining deals
           sql`NOT EXISTS (SELECT 1 FROM deals WHERE deals.contact_id = contacts.id AND deals.tenant_id = ${this.ctx.tenantId})`,
           // Exclude contacts with remaining activities
@@ -585,6 +594,8 @@ export class PatchEngine {
     if (!this.ctx || count <= 0) return 0;
 
     const { start, end } = this.getMonthDateRange(month);
+    const startStr = start.toISOString();
+    const endStr = end.toISOString();
 
     // Find companies to delete (newest first, demo-generated only, from this month)
     // Exclude companies that have contacts or deals referencing them
@@ -594,7 +605,7 @@ export class PatchEngine {
         and(
           eq(companies.tenantId, this.ctx.tenantId),
           eq(companies.demoGenerated, true),
-          sql`(${companies.demoSourceMonth} = ${month} OR (${companies.demoSourceMonth} IS NULL AND ${companies.createdAt} >= ${start} AND ${companies.createdAt} < ${end}))`,
+          sql`(${companies.demoSourceMonth} = ${month} OR (${companies.demoSourceMonth} IS NULL AND ${companies.createdAt} >= ${startStr}::timestamptz AND ${companies.createdAt} < ${endStr}::timestamptz))`,
           // Exclude companies with remaining contacts
           sql`NOT EXISTS (SELECT 1 FROM contacts WHERE contacts.company_id = companies.id AND contacts.tenant_id = ${this.ctx.tenantId})`,
           // Exclude companies with remaining deals
