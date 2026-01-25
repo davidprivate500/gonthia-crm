@@ -283,7 +283,7 @@ export default function DemoGeneratorPage() {
                 Generate Demo Client
               </Button>
             </DialogTrigger>
-            <DialogContent className={mode === 'monthly' ? 'max-w-6xl w-[90vw]' : 'max-w-2xl'}>
+            <DialogContent className={mode === 'monthly' ? 'sm:max-w-[90vw] lg:max-w-6xl' : 'sm:max-w-2xl'}>
               <DialogHeader>
                 <DialogTitle>Generate Demo Client</DialogTitle>
                 <DialogDescription>
