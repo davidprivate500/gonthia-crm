@@ -10,6 +10,9 @@ import { PatchEngine } from '@/lib/demo-generator/engine/patch-engine';
 import { generateSeed } from '@/lib/demo-generator/engine/rng';
 import type { PatchPlan, ToleranceConfig } from '@/lib/demo-generator/types';
 
+// Allow longer execution time (5 minutes max on Vercel Pro)
+export const maxDuration = 300;
+
 interface RouteParams {
   params: Promise<{ tenantId: string }>;
 }
@@ -100,10 +103,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }).returning();
 
     // Start patch execution asynchronously
+    console.log(`[Patch] Starting execution for job ${job.id}`);
     const engine = new PatchEngine(job.id);
-    engine.execute().catch((error) => {
-      console.error('Patch execution failed:', error);
-    });
+    engine.execute()
+      .then(() => {
+        console.log(`[Patch] Execution completed for job ${job.id}`);
+      })
+      .catch((error) => {
+        console.error(`[Patch] Execution failed for job ${job.id}:`, error);
+      });
 
     // Estimate execution time
     const totalRecords = plan.months.reduce((sum, m) => {

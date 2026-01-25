@@ -87,11 +87,14 @@ export class PatchEngine {
    */
   async execute(): Promise<void> {
     try {
+      console.log(`[PatchEngine] Starting execute() for job ${this.jobId}`);
+
       // Load job
       await this.loadJob();
       if (!this.job) {
         throw new Error(`Patch job ${this.jobId} not found`);
       }
+      console.log(`[PatchEngine] Job loaded: ${this.job.id}, status: ${this.job.status}`);
 
       // Check idempotency - if already completed, return early
       if (this.job.status === 'completed') {
@@ -102,10 +105,13 @@ export class PatchEngine {
       // Mark as running
       await this.updateStatus('running', 0, 'Initializing');
       await this.log('info', `Starting patch job ${this.jobId}`);
+      console.log(`[PatchEngine] Status updated to running`);
 
       // Load context
+      console.log(`[PatchEngine] Loading context for tenant ${this.job.tenantId}`);
       await this.loadContext();
       await this.updateProgress(5, 'Context loaded');
+      console.log(`[PatchEngine] Context loaded successfully`);
 
       // Parse plan
       const plan = this.job.patchPlanJson as PatchPlan;
@@ -147,9 +153,11 @@ export class PatchEngine {
       } else {
         // RECONCILE MODE: Execute deletions first for negative deltas
         if (plan.mode === 'reconcile') {
+          console.log(`[PatchEngine] Reconcile mode: starting deletions`);
           await this.log('info', 'Reconcile mode: executing deletions for negative deltas');
           await this.executeReconcileDeletions(plan, beforeKpis);
           await this.updateProgress(40, 'Deletions complete');
+          console.log(`[PatchEngine] Reconcile mode: deletions complete`);
         }
 
         // Execute additions (positive deltas)
@@ -1108,6 +1116,9 @@ export class PatchEngine {
   private async handleError(error: unknown): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     const stack = error instanceof Error ? error.stack : undefined;
+
+    console.error(`[PatchEngine] Error in job ${this.jobId}:`, message);
+    console.error(`[PatchEngine] Stack:`, stack);
 
     await this.log('error', message);
 
