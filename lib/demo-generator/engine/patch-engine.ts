@@ -1104,7 +1104,7 @@ export class PatchEngine {
 
     await db.execute(sql`
       UPDATE demo_patch_jobs
-      SET logs = logs || ${JSON.stringify([entry])}::jsonb,
+      SET logs = (logs::jsonb || ${JSON.stringify([entry])}::jsonb)::json,
           updated_at = NOW()
       WHERE id = ${this.jobId}::uuid
     `);
