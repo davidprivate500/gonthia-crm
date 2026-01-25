@@ -331,25 +331,54 @@ export class PatchEngine {
   ): Promise<void> {
     if (!this.ctx) throw new Error('Context not loaded');
 
+    // Debug: Log what we're working with
+    await this.log('info', `Plan months: ${plan.months.map(m => m.month).join(', ')}`);
+    await this.log('info', `Current KPI months: ${currentKpis.map(k => k.month).join(', ')}`);
+
     for (const monthTarget of plan.months) {
+      await this.log('info', `Processing month: ${monthTarget.month}`);
+      await this.log('info', `Target metrics: ${JSON.stringify(monthTarget.metrics)}`);
+
       const currentKpi = currentKpis.find(k => k.month === monthTarget.month);
-      if (!currentKpi) continue;
+      if (!currentKpi) {
+        await this.log('warn', `No current KPI found for month ${monthTarget.month} - skipping`);
+        continue;
+      }
 
       const targetMetrics = monthTarget.metrics;
       const currentMetrics = currentKpi.metrics;
+      await this.log('info', `Current metrics: ${JSON.stringify(currentMetrics)}`);
 
       // Calculate what needs to be deleted (negative deltas)
+      // Only calculate deletion if target is explicitly set (not undefined)
       const deletions = {
-        activities: Math.max(0, (currentMetrics.activitiesCreated ?? 0) - (targetMetrics.activitiesCreated ?? currentMetrics.activitiesCreated ?? 0)),
-        deals: Math.max(0, (currentMetrics.dealsCreated ?? 0) - (targetMetrics.dealsCreated ?? currentMetrics.dealsCreated ?? 0)),
-        contacts: Math.max(0, (currentMetrics.contactsCreated ?? 0) - (targetMetrics.contactsCreated ?? currentMetrics.contactsCreated ?? 0)),
-        companies: Math.max(0, (currentMetrics.companiesCreated ?? 0) - (targetMetrics.companiesCreated ?? currentMetrics.companiesCreated ?? 0)),
-        closedWonValue: Math.max(0, (currentMetrics.closedWonValue ?? 0) - (targetMetrics.closedWonValue ?? currentMetrics.closedWonValue ?? 0)),
-        closedWonCount: Math.max(0, (currentMetrics.closedWonCount ?? 0) - (targetMetrics.closedWonCount ?? currentMetrics.closedWonCount ?? 0)),
+        activities: targetMetrics.activitiesCreated !== undefined
+          ? Math.max(0, (currentMetrics.activitiesCreated ?? 0) - targetMetrics.activitiesCreated)
+          : 0,
+        deals: targetMetrics.dealsCreated !== undefined
+          ? Math.max(0, (currentMetrics.dealsCreated ?? 0) - targetMetrics.dealsCreated)
+          : 0,
+        contacts: targetMetrics.contactsCreated !== undefined
+          ? Math.max(0, (currentMetrics.contactsCreated ?? 0) - targetMetrics.contactsCreated)
+          : 0,
+        companies: targetMetrics.companiesCreated !== undefined
+          ? Math.max(0, (currentMetrics.companiesCreated ?? 0) - targetMetrics.companiesCreated)
+          : 0,
+        closedWonValue: targetMetrics.closedWonValue !== undefined
+          ? Math.max(0, (currentMetrics.closedWonValue ?? 0) - targetMetrics.closedWonValue)
+          : 0,
+        closedWonCount: targetMetrics.closedWonCount !== undefined
+          ? Math.max(0, (currentMetrics.closedWonCount ?? 0) - targetMetrics.closedWonCount)
+          : 0,
       };
 
+      await this.log('info', `Calculated deletions: ${JSON.stringify(deletions)}`);
+
       // Skip if nothing to delete
-      if (Object.values(deletions).every(v => v === 0)) continue;
+      if (Object.values(deletions).every(v => v === 0)) {
+        await this.log('info', `No deletions needed for ${monthTarget.month} - skipping`);
+        continue;
+      }
 
       const { start, end } = this.getMonthDateRange(monthTarget.month);
       await this.log('info', `Reconcile ${monthTarget.month}: deleting ${JSON.stringify(deletions)}`);
