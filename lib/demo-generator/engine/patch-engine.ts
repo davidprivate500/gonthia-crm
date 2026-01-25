@@ -524,9 +524,13 @@ export class PatchEngine {
   ): Promise<number> {
     if (!this.ctx || (valueToReduce <= 0 && countToReduce <= 0)) return 0;
 
+    console.log(`[PatchEngine] deleteWonDealsForValue called: month=${month}, valueToReduce=${valueToReduce}, countToReduce=${countToReduce}`);
+    console.log(`[PatchEngine] wonStageIds: ${JSON.stringify(this.ctx.wonStageIds)}`);
+
     const { start, end } = this.getMonthDateRange(month);
     const startStr = start.toISOString();
     const endStr = end.toISOString();
+    console.log(`[PatchEngine] Date range: ${startStr} to ${endStr}`);
 
     // Find won deals (smallest value first to minimize count impact)
     const wonDeals = await db.select({ id: deals.id, value: deals.value })
@@ -541,7 +545,25 @@ export class PatchEngine {
       )
       .orderBy(sql`CAST(${deals.value} AS numeric) ASC`);
 
-    if (wonDeals.length === 0) return 0;
+    console.log(`[PatchEngine] Found ${wonDeals.length} demo-generated won deals for deletion`);
+
+    if (wonDeals.length === 0) {
+      // Debug: check how many won deals exist WITHOUT demoGenerated filter
+      const allWonDeals = await db.select({ id: deals.id, value: deals.value, demoGenerated: deals.demoGenerated })
+        .from(deals)
+        .where(
+          and(
+            eq(deals.tenantId, this.ctx.tenantId),
+            sql`(${deals.demoSourceMonth} = ${month} OR (${deals.demoSourceMonth} IS NULL AND ${deals.createdAt} >= ${startStr}::timestamptz AND ${deals.createdAt} < ${endStr}::timestamptz))`,
+            inArray(deals.stageId, this.ctx.wonStageIds)
+          )
+        );
+      console.log(`[PatchEngine] Total won deals (including non-demo): ${allWonDeals.length}`);
+      if (allWonDeals.length > 0) {
+        console.log(`[PatchEngine] Won deals demoGenerated flags:`, allWonDeals.map(d => ({ id: d.id, value: d.value, demoGenerated: d.demoGenerated })));
+      }
+      return 0;
+    }
 
     // Select deals to delete until we meet the reduction targets
     const toDelete: string[] = [];
