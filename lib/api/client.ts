@@ -219,8 +219,19 @@ export const api = {
   search: (params: { q: string; types?: string; limit?: number }) =>
     apiFetch(`/search?${buildSearchParams(params)}`),
 
-  // Dashboard
-  dashboard: () => apiFetch('/reports/dashboard'),
+  // Reports & Dashboard
+  reports: {
+    dashboard: (params?: { preset?: string; from?: string; to?: string }) =>
+      apiFetch(`/reports/dashboard?${buildSearchParams(params)}`),
+    metrics: (params?: { preset?: string; from?: string; to?: string }) =>
+      apiFetch(`/reports/metrics?${buildSearchParams(params)}`),
+    monthly: (params?: { preset?: string; from?: string; to?: string }) =>
+      apiFetch(`/reports/monthly?${buildSearchParams(params)}`),
+  },
+
+  // Dashboard (legacy - use reports.dashboard)
+  dashboard: (params?: { preset?: string; from?: string; to?: string }) =>
+    apiFetch(`/reports/dashboard?${buildSearchParams(params)}`),
 
   // API Keys
   apiKeys: {

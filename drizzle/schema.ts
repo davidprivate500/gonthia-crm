@@ -463,6 +463,10 @@ export const demoGenerationJobs = pgTable('demo_generation_jobs', {
   // Progress tracking
   progress: integer('progress').notNull().default(0), // 0-100
   currentStep: varchar('current_step', { length: 100 }),
+  // Generation phase for chunked/resumable execution
+  generationPhase: varchar('generation_phase', { length: 50 }).default('init'),
+  // Detailed state for resumable generation (batch progress, created IDs, etc.)
+  generationState: json('generation_state'),
   logs: json('logs').default([]),
   // Metrics (actual generated counts)
   metrics: json('metrics'),

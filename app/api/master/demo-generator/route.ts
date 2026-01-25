@@ -9,11 +9,14 @@ import {
 import { eq, desc, asc, ilike, and, sql } from 'drizzle-orm';
 import { toSearchPattern } from '@/lib/search';
 import { DemoGenerator } from '@/lib/demo-generator/engine/generator';
-import { MonthlyPlanGenerator } from '@/lib/demo-generator/engine/monthly-plan-generator';
+import { ChunkedMonthlyPlanGenerator } from '@/lib/demo-generator/engine/chunked-monthly-plan-generator';
 import { planValidator } from '@/lib/demo-generator/engine/plan-validator';
 import { mergeWithDefaults } from '@/lib/demo-generator/config';
 import { generateSeed } from '@/lib/demo-generator/engine/rng';
 import type { DemoGenerationConfigV2 } from '@/lib/demo-generator/types';
+
+// Allow longer execution time (5 minutes max on Vercel Pro)
+export const maxDuration = 300;
 
 // POST /api/master/demo-generator - Start a new demo generation
 export async function POST(request: NextRequest) {
@@ -56,10 +59,10 @@ export async function POST(request: NextRequest) {
         monthlyPlan: result.data.monthlyPlan,
       };
 
-      // Create job record with monthly plan data
+      // Create job record with monthly plan data and initial state for chunked generation
       const [job] = await db.insert(demoGenerationJobs).values({
         createdById: auth.userId,
-        status: 'pending',
+        status: 'running',
         mode: 'monthly-plan',
         config: configV2,
         seed,
@@ -67,15 +70,18 @@ export async function POST(request: NextRequest) {
         planVersion: result.data.monthlyPlan.metadata?.version || '1.0',
         toleranceConfig: result.data.monthlyPlan.tolerances,
         progress: 0,
-        currentStep: 'Queued',
+        currentStep: 'Starting',
+        generationPhase: 'init',
+        generationState: {},
         logs: [],
+        startedAt: new Date(),
       }).returning();
 
-      // Start monthly plan generation
-      const generator = new MonthlyPlanGenerator(job.id, configV2, seed);
+      // Start chunked monthly plan generation (timeout-safe)
+      const generator = new ChunkedMonthlyPlanGenerator(job.id);
 
-      generator.generate().catch((error) => {
-        console.error('Monthly plan generation failed:', error);
+      generator.continueGeneration().catch((error) => {
+        console.error('Chunked monthly plan generation failed:', error);
       });
 
       return successResponse({
