@@ -34,6 +34,7 @@ import {
   Download,
   BarChart3,
   PieChart,
+  Grid3X3,
 } from 'lucide-react';
 
 interface MetricsData {
@@ -88,14 +89,44 @@ interface MonthlyData {
   };
 }
 
+interface PipelineStageInfo {
+  id: string;
+  name: string;
+  color: string | null;
+  position: number;
+  isWon: boolean;
+  isLost: boolean;
+}
+
+interface PipelinePivotData {
+  dateRange: {
+    from: string;
+    to: string;
+    preset?: DatePresetKey;
+  };
+  stages: PipelineStageInfo[];
+  rows: Array<{
+    month: string;
+    monthLabel: string;
+    stages: Record<string, { count: number; value: number }>;
+    total: { count: number; value: number };
+  }>;
+  totals: {
+    byStage: Record<string, { count: number; value: number }>;
+    overall: { count: number; value: number };
+  };
+}
+
 export default function ReportsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const [metricsData, setMetricsData] = useState<MetricsData | null>(null);
   const [monthlyData, setMonthlyData] = useState<MonthlyData | null>(null);
+  const [pivotData, setPivotData] = useState<PipelinePivotData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('performance');
+  const [pivotMetric, setPivotMetric] = useState<'count' | 'value'>('count');
 
   // Initialize date range
   const [dateRange, setDateRange] = useState<DateRange>(() => {
@@ -134,9 +165,10 @@ export default function ReportsPage() {
         params.to = toDate.toISOString().split('T')[0];
       }
 
-      const [metricsResponse, monthlyResponse] = await Promise.all([
+      const [metricsResponse, monthlyResponse, pivotResponse] = await Promise.all([
         api.reports.metrics(params),
         api.reports.monthly(params),
+        api.reports.pipelinePivot(params),
       ]);
 
       if (metricsResponse.data) {
@@ -144,6 +176,9 @@ export default function ReportsPage() {
       }
       if (monthlyResponse.data) {
         setMonthlyData(monthlyResponse.data as MonthlyData);
+      }
+      if (pivotResponse.data) {
+        setPivotData(pivotResponse.data as PipelinePivotData);
       }
     } catch (error) {
       console.error('Failed to fetch reports:', error);
@@ -199,6 +234,47 @@ export default function ReportsPage() {
     document.body.removeChild(link);
   };
 
+  const exportPivotToCSV = () => {
+    if (!pivotData) return;
+
+    // Build headers: Month, Stage1, Stage2, ..., Total
+    const headers = ['Month', ...pivotData.stages.map(s => s.name), 'Total'];
+
+    // Build rows based on selected metric
+    const rows = pivotData.rows.map(row => {
+      const stageValues = pivotData.stages.map(stage => {
+        const metrics = row.stages[stage.id];
+        return pivotMetric === 'count' ? metrics?.count || 0 : metrics?.value || 0;
+      });
+      const total = pivotMetric === 'count' ? row.total.count : row.total.value;
+      return [row.monthLabel, ...stageValues, total];
+    });
+
+    // Add totals row
+    const totalsByStage = pivotData.stages.map(stage => {
+      const metrics = pivotData.totals.byStage[stage.id];
+      return pivotMetric === 'count' ? metrics?.count || 0 : metrics?.value || 0;
+    });
+    const overallTotal = pivotMetric === 'count'
+      ? pivotData.totals.overall.count
+      : pivotData.totals.overall.value;
+    rows.push(['Total', ...totalsByStage, overallTotal]);
+
+    const csvContent = [headers, ...rows]
+      .map(row => row.join(','))
+      .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    const metricLabel = pivotMetric === 'count' ? 'deals' : 'value';
+    link.setAttribute('href', url);
+    link.setAttribute('download', `pipeline-pivot-${metricLabel}-${formatDateRange(dateRange).replace(/\s/g, '-')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const periodLabel = dateRange.preset && dateRange.preset !== 'custom'
     ? getPresetLabel(dateRange.preset)
     : formatDateRange(dateRange);
@@ -239,6 +315,10 @@ export default function ReportsPage() {
               <TabsTrigger value="monthly">
                 <PieChart className="h-4 w-4 mr-2" />
                 Monthly Summary
+              </TabsTrigger>
+              <TabsTrigger value="pipeline-pivot">
+                <Grid3X3 className="h-4 w-4 mr-2" />
+                Pipeline Pivot
               </TabsTrigger>
             </TabsList>
 
@@ -465,6 +545,171 @@ export default function ReportsPage() {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="pipeline-pivot" className="space-y-6 mt-6">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <Grid3X3 className="h-5 w-5" />
+                        Pipeline Pivot Table
+                      </CardTitle>
+                      <CardDescription>
+                        Deals breakdown by month and pipeline stage (like Excel pivot)
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                        <button
+                          onClick={() => setPivotMetric('count')}
+                          className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                            pivotMetric === 'count'
+                              ? 'bg-white shadow text-gray-900'
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          Count
+                        </button>
+                        <button
+                          onClick={() => setPivotMetric('value')}
+                          className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                            pivotMetric === 'value'
+                              ? 'bg-white shadow text-gray-900'
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          Value ($)
+                        </button>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={exportPivotToCSV} disabled={!pivotData}>
+                        <Download className="h-4 w-4 mr-1" />
+                        Export CSV
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {pivotData && pivotData.stages.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="sticky left-0 bg-white">Month</TableHead>
+                            {pivotData.stages.map((stage) => (
+                              <TableHead key={stage.id} className="text-center min-w-[100px]">
+                                <div className="flex items-center justify-center gap-2">
+                                  <div
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ backgroundColor: stage.color || '#6366f1' }}
+                                  />
+                                  <span className="truncate">{stage.name}</span>
+                                </div>
+                              </TableHead>
+                            ))}
+                            <TableHead className="text-right font-bold">Total</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {pivotData.rows.map((row) => (
+                            <TableRow key={row.month}>
+                              <TableCell className="font-medium sticky left-0 bg-white">
+                                {row.monthLabel}
+                              </TableCell>
+                              {pivotData.stages.map((stage) => {
+                                const metrics = row.stages[stage.id];
+                                const value = pivotMetric === 'count'
+                                  ? metrics?.count || 0
+                                  : metrics?.value || 0;
+                                const displayValue = pivotMetric === 'value'
+                                  ? `$${value.toLocaleString()}`
+                                  : value;
+                                return (
+                                  <TableCell
+                                    key={stage.id}
+                                    className={`text-center ${value > 0 ? '' : 'text-gray-300'}`}
+                                  >
+                                    {displayValue}
+                                  </TableCell>
+                                );
+                              })}
+                              <TableCell className="text-right font-medium">
+                                {pivotMetric === 'value'
+                                  ? `$${row.total.value.toLocaleString()}`
+                                  : row.total.count}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          {/* Totals Row */}
+                          <TableRow className="font-bold bg-gray-50">
+                            <TableCell className="sticky left-0 bg-gray-50">Total</TableCell>
+                            {pivotData.stages.map((stage) => {
+                              const metrics = pivotData.totals.byStage[stage.id];
+                              const value = pivotMetric === 'count'
+                                ? metrics?.count || 0
+                                : metrics?.value || 0;
+                              const displayValue = pivotMetric === 'value'
+                                ? `$${value.toLocaleString()}`
+                                : value;
+                              return (
+                                <TableCell key={stage.id} className="text-center">
+                                  {displayValue}
+                                </TableCell>
+                              );
+                            })}
+                            <TableCell className="text-right">
+                              {pivotMetric === 'value'
+                                ? `$${pivotData.totals.overall.value.toLocaleString()}`
+                                : pivotData.totals.overall.count}
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      {pivotData?.stages.length === 0 ? (
+                        <p>No pipeline stages configured. Set up your pipeline first.</p>
+                      ) : (
+                        <p>No deals data for the selected period</p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Stage Legend */}
+              {pivotData && pivotData.stages.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Pipeline Stages</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-4">
+                      {pivotData.stages.map((stage) => (
+                        <div key={stage.id} className="flex items-center gap-2">
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: stage.color || '#6366f1' }}
+                          />
+                          <span className="text-sm">{stage.name}</span>
+                          {stage.isWon && (
+                            <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded">
+                              Won
+                            </span>
+                          )}
+                          {stage.isLost && (
+                            <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-700 rounded">
+                              Lost
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
           </Tabs>
         )}

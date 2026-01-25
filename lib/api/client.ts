@@ -227,6 +227,8 @@ export const api = {
       apiFetch(`/reports/metrics?${buildSearchParams(params)}`),
     monthly: (params?: { preset?: string; from?: string; to?: string }) =>
       apiFetch(`/reports/monthly?${buildSearchParams(params)}`),
+    pipelinePivot: (params?: { preset?: string; from?: string; to?: string }) =>
+      apiFetch(`/reports/pipeline-pivot?${buildSearchParams(params)}`),
   },
 
   // Dashboard (legacy - use reports.dashboard)
