@@ -15,6 +15,7 @@ import {
   Key,
   Shield,
   LogOut,
+  BarChart3,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ const navigation = [
 ];
 
 const adminNavigation = [
+  { name: 'Reports', href: '/settings/reports', icon: BarChart3 },
   { name: 'Pipeline', href: '/settings/pipeline', icon: Kanban },
   { name: 'Team', href: '/settings/team', icon: Users },
   { name: 'Billing', href: '/settings/billing', icon: FileText },
