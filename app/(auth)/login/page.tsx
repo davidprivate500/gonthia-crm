@@ -23,7 +23,12 @@ export default function LoginPage() {
 
     const result = await login(email, password);
     if (result.success) {
-      router.push('/dashboard');
+      // Redirect master admins to the master panel, regular users to dashboard
+      if (result.user?.isMasterAdmin) {
+        router.push('/master/tenants');
+      } else {
+        router.push('/dashboard');
+      }
     } else {
       setError(result.error || 'Login failed');
     }

@@ -48,7 +48,7 @@ export function useAuth({ requireAuth = true } = {}) {
       const data = response.data as AuthResponse | undefined;
       if (data) {
         setAuth(data.user, data.organization);
-        return { success: true };
+        return { success: true, user: data.user };
       }
       return { success: false, error: 'Login failed' };
     } catch (error: unknown) {
