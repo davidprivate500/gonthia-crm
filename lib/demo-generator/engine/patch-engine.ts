@@ -351,7 +351,9 @@ export class PatchEngine {
       // Skip if nothing to delete
       if (Object.values(deletions).every(v => v === 0)) continue;
 
+      const { start, end } = this.getMonthDateRange(monthTarget.month);
       await this.log('info', `Reconcile ${monthTarget.month}: deleting ${JSON.stringify(deletions)}`);
+      await this.log('info', `Date range: ${start.toISOString()} to ${end.toISOString()}`);
 
       // Delete in FK-safe order: activities → deals → contacts → companies
       // 1. Delete activities
@@ -395,12 +397,13 @@ export class PatchEngine {
   }
 
   /**
-   * Get date range for a month string (YYYY-MM)
+   * Get date range for a month string (YYYY-MM) in UTC
+   * IMPORTANT: Must use UTC to match KPI aggregator date ranges
    */
   private getMonthDateRange(month: string): { start: Date; end: Date } {
     const [year, monthNum] = month.split('-').map(Number);
-    const start = new Date(year, monthNum - 1, 1); // First day of month
-    const end = new Date(year, monthNum, 1); // First day of next month
+    const start = new Date(Date.UTC(year, monthNum - 1, 1, 0, 0, 0, 0)); // First day of month UTC
+    const end = new Date(Date.UTC(year, monthNum, 1, 0, 0, 0, 0)); // First day of next month UTC
     return { start, end };
   }
 
@@ -622,11 +625,22 @@ export class PatchEngine {
   private async executePatch(deltas: PatchMonthTarget[]): Promise<void> {
     if (!this.ctx) throw new Error('Context not loaded');
 
-    const totalMonths = deltas.length;
+    // Filter to only months with positive deltas (something to create)
+    const monthsWithPositiveDeltas = deltas.filter(d => {
+      const values = Object.values(d.metrics);
+      return values.some(v => v !== undefined && v > 0);
+    });
+
+    if (monthsWithPositiveDeltas.length === 0) {
+      await this.log('info', 'No records to create (all deltas are zero or negative)');
+      return;
+    }
+
+    const totalMonths = monthsWithPositiveDeltas.length;
     let processedMonths = 0;
 
-    for (const monthDelta of deltas) {
-      await this.log('info', `Processing month ${monthDelta.month}`);
+    for (const monthDelta of monthsWithPositiveDeltas) {
+      await this.log('info', `Processing month ${monthDelta.month}: ${JSON.stringify(monthDelta.metrics)}`);
 
       // Create daily allocations for this month
       const allocations = this.createDailyAllocations(monthDelta);
@@ -637,7 +651,7 @@ export class PatchEngine {
       }
 
       processedMonths++;
-      const progress = 20 + Math.round((processedMonths / totalMonths) * 60);
+      const progress = 40 + Math.round((processedMonths / totalMonths) * 40);
       await this.updateProgress(progress, `Processed ${processedMonths}/${totalMonths} months`);
     }
   }
