@@ -104,6 +104,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Execute patch synchronously (wait for completion)
     console.log(`[Patch] Starting execution for job ${job.id}`);
+
+    // First, verify the job was created
+    const verifyJob = await db.query.demoPatchJobs.findFirst({
+      where: eq(demoPatchJobs.id, job.id),
+    });
+    console.log(`[Patch] Job verified: ${verifyJob?.id}, status: ${verifyJob?.status}`);
+
+    // Update status to running immediately to confirm DB updates work
+    await db.update(demoPatchJobs)
+      .set({ status: 'running', currentStep: 'Starting engine', updatedAt: new Date() })
+      .where(eq(demoPatchJobs.id, job.id));
+    console.log(`[Patch] Status updated to running`);
+
     const engine = new PatchEngine(job.id);
 
     try {
@@ -111,13 +124,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       console.log(`[Patch] Execution completed for job ${job.id}`);
     } catch (error) {
       console.error(`[Patch] Execution failed for job ${job.id}:`, error);
-      // Error is already handled by PatchEngine.handleError()
+      // Update job status to failed with error message
+      await db.update(demoPatchJobs)
+        .set({
+          status: 'failed',
+          errorMessage: error instanceof Error ? error.message : String(error),
+          updatedAt: new Date()
+        })
+        .where(eq(demoPatchJobs.id, job.id));
     }
 
     // Fetch final job status
     const finalJob = await db.query.demoPatchJobs.findFirst({
       where: eq(demoPatchJobs.id, job.id),
     });
+    console.log(`[Patch] Final status: ${finalJob?.status}, step: ${finalJob?.currentStep}`);
 
     return successResponse({
       jobId: job.id,
