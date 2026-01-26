@@ -237,7 +237,7 @@ export default function DashboardPage() {
                           <div className="text-right">
                             <p className="text-sm font-medium">{stage.dealCount} deals</p>
                             <p className="text-xs text-gray-500">
-                              ${stage.totalValue.toLocaleString()}
+                              ${(stage.totalValue ?? 0).toLocaleString()}
                             </p>
                           </div>
                         </div>

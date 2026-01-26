@@ -1009,11 +1009,12 @@ export class PatchEngine {
     const valueAllocator = new ValueAllocator(this.ctx.rng);
 
     // Allocate values to deals
+    // Note: allocatePipelineValues(totalDeals, closedWonCount, pipelineValue, closedWonValue, ...)
     const { closedWonValues, openDealValues } = valueAllocator.allocatePipelineValues(
+      totalDeals,
       closedWonCount,
-      totalDeals - closedWonCount,
+      pipelineAddedValue,
       closedWonValue,
-      pipelineAddedValue - closedWonValue,
       {
         minValue: this.ctx.template.deals.minValue,
         maxValue: this.ctx.template.deals.maxValue,
@@ -1029,10 +1030,14 @@ export class PatchEngine {
       const contact = contactPool.length > 0 ? this.ctx.rng.pick(contactPool) : null;
       const company = companyPool.length > 0 ? this.ctx.rng.pick(companyPool) : null;
 
+      // Safeguard: use fallback value if closedWonValues[i] is undefined/NaN
+      const dealValue = closedWonValues[i] ?? this.ctx.template.deals.avgValue;
+      const safeValue = isNaN(dealValue) ? this.ctx.template.deals.avgValue : dealValue;
+
       dealsData.push({
         tenantId: this.ctx.tenantId,
         title: `${contact?.firstName ?? 'Deal'} ${contact?.lastName ?? ''} - ${this.ctx.template.name}`.trim(),
-        value: String(Math.round(closedWonValues[i])),
+        value: String(Math.round(safeValue)),
         currency: this.ctx.currency,
         stageId: this.ctx.rng.pick(this.ctx.wonStageIds),
         position: i,
@@ -1061,10 +1066,14 @@ export class PatchEngine {
         ? this.ctx.rng.pick(this.ctx.lostStageIds.length > 0 ? this.ctx.lostStageIds : this.ctx.openStageIds)
         : this.ctx.rng.pick(this.ctx.openStageIds.length > 0 ? this.ctx.openStageIds : this.ctx.wonStageIds);
 
+      // Safeguard: use fallback value if openDealValues[i] is undefined/NaN
+      const openValue = openDealValues[i] ?? this.ctx.template.deals.avgValue;
+      const safeOpenValue = isNaN(openValue) ? this.ctx.template.deals.avgValue : openValue;
+
       dealsData.push({
         tenantId: this.ctx.tenantId,
         title: `${contact?.firstName ?? 'Deal'} ${contact?.lastName ?? ''} - ${this.ctx.template.name}`.trim(),
-        value: String(Math.round(openDealValues[i] ?? this.ctx.template.deals.avgValue)),
+        value: String(Math.round(safeOpenValue)),
         currency: this.ctx.currency,
         stageId,
         position: closedWonCount + i,
