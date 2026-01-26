@@ -820,6 +820,17 @@ export class PatchEngine {
       }
     }
 
+    // CRITICAL FIX: Ensure closedWonCount is always <= dealsCreated for each day
+    // The independent distribution can put closedWonCount on days with no dealsCreated,
+    // which causes those won deals to never be created.
+    for (const alloc of allocations) {
+      if (alloc.metrics.closedWonCount > alloc.metrics.dealsCreated) {
+        // Move excess closedWonCount by increasing dealsCreated to match
+        // This ensures won deals have a "parent" deal to be created from
+        alloc.metrics.dealsCreated = alloc.metrics.closedWonCount;
+      }
+    }
+
     // Distribute values across days with deals
     const closedWonValue = metrics.closedWonValue ?? 0;
     const pipelineAddedValue = metrics.pipelineAddedValue ?? 0;
@@ -953,12 +964,13 @@ export class PatchEngine {
       }
     }
 
-    // Create deals
-    if (metrics.dealsCreated > 0) {
+    // Create deals (also create if we have won deals to create, even if dealsCreated is 0)
+    const totalDealsToCreate = Math.max(metrics.dealsCreated, metrics.closedWonCount);
+    if (totalDealsToCreate > 0) {
       await this.createDealsForDay(
         date,
         month,
-        metrics.dealsCreated,
+        totalDealsToCreate,
         metrics.closedWonCount,
         metrics.closedWonValue,
         metrics.pipelineAddedValue,
