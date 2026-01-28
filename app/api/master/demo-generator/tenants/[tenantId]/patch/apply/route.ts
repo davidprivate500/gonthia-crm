@@ -119,15 +119,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         for (const monthPlan of plan.months) {
           const month = monthPlan.month;
           const currentMonth = kpis.find(k => k.month === month);
-          const metrics = currentMonth?.metrics ?? {};
+          const metrics = currentMonth?.metrics ?? {} as Record<string, number>;
 
           // Get current values with defaults
-          const currentContacts = metrics.contactsCreated ?? 0;
-          const currentCompanies = metrics.companiesCreated ?? 0;
-          const currentDeals = metrics.dealsCreated ?? 0;
-          const currentWonCount = metrics.closedWonCount ?? 0;
-          const currentWonValue = metrics.closedWonValue ?? 0;
-          const currentActivities = metrics.activitiesCreated ?? 0;
+          const currentContacts = (metrics.contactsCreated as number) ?? 0;
+          const currentCompanies = (metrics.companiesCreated as number) ?? 0;
+          const currentDeals = (metrics.dealsCreated as number) ?? 0;
+          const currentWonCount = (metrics.closedWonCount as number) ?? 0;
+          const currentWonValue = (metrics.closedWonValue as number) ?? 0;
+          const currentActivities = (metrics.activitiesCreated as number) ?? 0;
 
           // Calculate deltas (target - current = adjustment needed)
           const contactsDelta = (monthPlan.metrics.contactsCreated ?? currentContacts) - currentContacts;
