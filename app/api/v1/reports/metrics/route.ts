@@ -1,13 +1,14 @@
 import { NextRequest } from 'next/server';
-import { db, contacts, companies, deals, activities, pipelineStages } from '@/lib/db';
+import { db, contacts, companies, deals, activities, pipelineStages, demoMetricOverrides } from '@/lib/db';
 import { requireTenantAuth } from '@/lib/auth/middleware';
 import { successResponse, internalError, badRequestError } from '@/lib/api/response';
-import { eq, and, isNull, count, sql, gte, lt } from 'drizzle-orm';
+import { eq, and, isNull, count, sql, gte, lt, lte } from 'drizzle-orm';
 import {
   type DatePresetKey,
   parseDateRange,
   resolvePreset,
 } from '@/lib/dates';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
 
 /**
  * GET /api/v1/reports/metrics
@@ -224,6 +225,38 @@ export async function GET(request: NextRequest) {
         .groupBy(activities.type),
     ]);
 
+    // Query metric overrides for the date range
+    // Overrides are stored by month (YYYY-MM), so we need to determine which months overlap
+    const startMonth = format(rangeFrom, 'yyyy-MM');
+    const endMonth = format(rangeTo, 'yyyy-MM');
+
+    const overridesResult = await db.select({
+      closedWonCountOverride: demoMetricOverrides.closedWonCountOverride,
+      closedWonValueOverride: demoMetricOverrides.closedWonValueOverride,
+    })
+      .from(demoMetricOverrides)
+      .where(and(
+        eq(demoMetricOverrides.tenantId, auth.tenantId),
+        gte(demoMetricOverrides.month, startMonth),
+        lte(demoMetricOverrides.month, endMonth)
+      ));
+
+    // Sum up all overrides in the date range
+    let wonCountOverride = 0;
+    let wonValueOverride = 0;
+    for (const override of overridesResult) {
+      wonCountOverride += Number(override.closedWonCountOverride) || 0;
+      wonValueOverride += parseFloat(String(override.closedWonValueOverride)) || 0;
+    }
+
+    // Calculate base values
+    const baseWonDeals = wonDealsResult[0].count;
+    const baseWonValue = parseFloat(wonValueResult[0].total);
+
+    // Apply overrides (add to computed values)
+    const totalWonDeals = baseWonDeals + wonCountOverride;
+    const totalWonValue = baseWonValue + wonValueOverride;
+
     // Format response
     const metrics = {
       dateRange: {
@@ -243,12 +276,12 @@ export async function GET(request: NextRequest) {
       },
       deals: {
         new: newDealsResult[0].count,
-        won: wonDealsResult[0].count,
+        won: totalWonDeals,
         lost: lostDealsResult[0].count,
         pipelineValue: parseFloat(newPipelineValueResult[0].total),
-        wonValue: parseFloat(wonValueResult[0].total),
+        wonValue: totalWonValue,
         winRate: newDealsResult[0].count > 0
-          ? Math.round((wonDealsResult[0].count / newDealsResult[0].count) * 100)
+          ? Math.round((totalWonDeals / newDealsResult[0].count) * 100)
           : 0,
       },
       activities: {

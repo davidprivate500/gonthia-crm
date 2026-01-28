@@ -19,7 +19,7 @@ import { api } from '@/lib/api/client';
 import {
   ArrowLeft, Plus, AlertTriangle, CheckCircle,
   Loader2, Clock, XCircle, Building2,
-  ArrowRight, RefreshCw, Eye, Edit3,
+  ArrowRight, RefreshCw, Eye, Edit3, Zap,
 } from 'lucide-react';
 import { formatDistanceToNow, format, subMonths, startOfMonth } from 'date-fns';
 
@@ -50,7 +50,7 @@ interface PatchJob {
   id: string;
   tenantId: string;
   tenantName: string | null;
-  mode: 'additive' | 'reconcile';
+  mode: 'additive' | 'reconcile' | 'metrics-only';
   planType: 'targets' | 'deltas';
   status: 'pending' | 'running' | 'completed' | 'failed';
   progress: number;
@@ -118,7 +118,7 @@ export default function MonthlyUpdatesPage() {
 
   // Create patch state
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
-  const [patchMode, setPatchMode] = useState<'additive' | 'reconcile'>('additive');
+  const [patchMode, setPatchMode] = useState<'additive' | 'reconcile' | 'metrics-only'>('metrics-only');
   const [monthTargets, setMonthTargets] = useState<MonthTargetInput[]>([]);
   const [isLoadingKpis, setIsLoadingKpis] = useState(false);
 
@@ -489,6 +489,25 @@ export default function MonthlyUpdatesPage() {
                     <CardContent>
                       <div className="flex gap-4">
                         <button
+                          onClick={() => setPatchMode('metrics-only')}
+                          className={`flex-1 p-4 rounded-lg border-2 text-left transition-colors ${
+                            patchMode === 'metrics-only'
+                              ? 'border-purple-500 bg-purple-50'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <Zap className="h-5 w-5 text-purple-600" />
+                            <span className="font-semibold">Metrics Only</span>
+                            {patchMode === 'metrics-only' && (
+                              <Badge className="bg-purple-100 text-purple-700">Recommended</Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600">
+                            Change Won Deals &amp; Won Value on reports without adding records.
+                          </p>
+                        </button>
+                        <button
                           onClick={() => setPatchMode('additive')}
                           className={`flex-1 p-4 rounded-lg border-2 text-left transition-colors ${
                             patchMode === 'additive'
@@ -527,6 +546,18 @@ export default function MonthlyUpdatesPage() {
                           </p>
                         </button>
                       </div>
+                      {patchMode === 'metrics-only' && (
+                        <div className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                          <div className="flex items-center gap-2 text-purple-700 font-medium">
+                            <Zap className="h-4 w-4" />
+                            Metrics Only Mode
+                          </div>
+                          <p className="text-sm text-purple-600 mt-1">
+                            Only <strong>Won Deals</strong> and <strong>Won Value</strong> can be modified.
+                            Changes are applied as report adjustments without creating actual deal or contact records.
+                          </p>
+                        </div>
+                      )}
                       {patchMode === 'reconcile' && (
                         <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                           <div className="flex items-center gap-2 text-amber-700 font-medium">
@@ -549,7 +580,9 @@ export default function MonthlyUpdatesPage() {
                     <CardHeader>
                       <CardTitle>Monthly Metrics</CardTitle>
                       <CardDescription>
-                        Edit values directly. Green = increase, {patchMode === 'additive' ? 'yellow = cannot decrease in additive mode' : 'red = will delete records'}.
+                        {patchMode === 'metrics-only'
+                          ? 'Only Won Deals and Won Value can be edited in Metrics Only mode.'
+                          : `Edit values directly. Green = increase, ${patchMode === 'additive' ? 'yellow = cannot decrease in additive mode' : 'red = will delete records'}.`}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -577,52 +610,62 @@ export default function MonthlyUpdatesPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {METRIC_CONFIG.map((metric) => (
-                                <tr key={metric.key} className="hover:bg-gray-50">
-                                  <td className="p-2 font-medium text-gray-700 border sticky left-0 bg-white z-10">
-                                    {metric.label}
-                                    {metric.isCurrency && <span className="text-gray-400 ml-1">($)</span>}
-                                  </td>
-                                  {monthTargets.map((m, idx) => {
-                                    const delta = getDelta(idx, metric.key);
-                                    const changed = hasChanged(idx, metric.key);
-                                    const isDecrease = delta < 0;
+                              {METRIC_CONFIG.map((metric) => {
+                                // In metrics-only mode, only allow editing closedWonCount and closedWonValue
+                                const isMetricsOnlyAllowed = metric.key === 'closedWonCount' || metric.key === 'closedWonValue';
+                                const isDisabled = patchMode === 'metrics-only' && !isMetricsOnlyAllowed;
 
-                                    return (
-                                      <td key={`${m.month}-${metric.key}`} className="p-1 border">
-                                        <div className="relative">
-                                          <Input
-                                            type="number"
-                                            min={0}
-                                            value={m.target[metric.key]}
-                                            onChange={(e) => handleTargetChange(idx, metric.key, e.target.value)}
-                                            className={`text-right h-9 pr-2 ${
-                                              changed
-                                                ? isDecrease
+                                return (
+                                  <tr key={metric.key} className={`hover:bg-gray-50 ${isDisabled ? 'opacity-50' : ''}`}>
+                                    <td className="p-2 font-medium text-gray-700 border sticky left-0 bg-white z-10">
+                                      {metric.label}
+                                      {metric.isCurrency && <span className="text-gray-400 ml-1">($)</span>}
+                                      {isDisabled && <span className="text-gray-400 ml-1 text-xs">(disabled)</span>}
+                                    </td>
+                                    {monthTargets.map((m, idx) => {
+                                      const delta = getDelta(idx, metric.key);
+                                      const changed = hasChanged(idx, metric.key);
+                                      const isDecrease = delta < 0;
+
+                                      return (
+                                        <td key={`${m.month}-${metric.key}`} className="p-1 border">
+                                          <div className="relative">
+                                            <Input
+                                              type="number"
+                                              min={0}
+                                              value={m.target[metric.key]}
+                                              onChange={(e) => handleTargetChange(idx, metric.key, e.target.value)}
+                                              disabled={isDisabled}
+                                              className={`text-right h-9 pr-2 ${
+                                                isDisabled
+                                                  ? 'bg-gray-100 cursor-not-allowed'
+                                                  : changed
+                                                    ? isDecrease
+                                                      ? patchMode === 'reconcile'
+                                                        ? 'border-red-400 bg-red-50'
+                                                        : 'border-yellow-400 bg-yellow-50'
+                                                      : 'border-green-400 bg-green-50'
+                                                    : ''
+                                              }`}
+                                            />
+                                            {changed && !isDisabled && (
+                                              <span className={`absolute -top-2 -right-1 text-xs font-medium px-1 rounded ${
+                                                isDecrease
                                                   ? patchMode === 'reconcile'
-                                                    ? 'border-red-400 bg-red-50'
-                                                    : 'border-yellow-400 bg-yellow-50'
-                                                  : 'border-green-400 bg-green-50'
-                                                : ''
-                                            }`}
-                                          />
-                                          {changed && (
-                                            <span className={`absolute -top-2 -right-1 text-xs font-medium px-1 rounded ${
-                                              isDecrease
-                                                ? patchMode === 'reconcile'
-                                                  ? 'text-red-600'
-                                                  : 'text-yellow-600'
-                                                : 'text-green-600'
-                                            }`}>
-                                              {delta > 0 ? '+' : ''}{delta.toLocaleString()}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </td>
-                                    );
-                                  })}
-                                </tr>
-                              ))}
+                                                    ? 'text-red-600'
+                                                    : 'text-yellow-600'
+                                                  : 'text-green-600'
+                                              }`}>
+                                                {delta > 0 ? '+' : ''}{delta.toLocaleString()}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -806,9 +849,15 @@ export default function MonthlyUpdatesPage() {
                             <TableCell>
                               <Badge
                                 variant="outline"
-                                className={job.mode === 'reconcile' ? 'border-amber-500 text-amber-700' : ''}
+                                className={
+                                  job.mode === 'reconcile'
+                                    ? 'border-amber-500 text-amber-700'
+                                    : job.mode === 'metrics-only'
+                                      ? 'border-purple-500 text-purple-700'
+                                      : ''
+                                }
                               >
-                                {job.mode === 'reconcile' ? 'reconcile' : 'additive'}
+                                {job.mode === 'reconcile' ? 'reconcile' : job.mode === 'metrics-only' ? 'metrics-only' : 'additive'}
                               </Badge>
                             </TableCell>
                             <TableCell>

@@ -337,7 +337,7 @@ export interface PlanValidationResult {
 // PATCH TYPES (for incremental updates to existing demo tenants)
 // ============================================================================
 
-export type PatchMode = 'additive' | 'reconcile';
+export type PatchMode = 'additive' | 'reconcile' | 'metrics-only';
 export type PatchPlanType = 'targets' | 'deltas';
 
 export interface PatchMetrics {

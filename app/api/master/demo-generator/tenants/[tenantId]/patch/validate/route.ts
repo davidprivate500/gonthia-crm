@@ -46,7 +46,56 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const aggregator = new KpiAggregator(tenantId);
     const currentKpis = await aggregator.queryMonthlyKpis(months[0], months[months.length - 1]);
 
-    // Validate the patch plan
+    // Handle metrics-only mode separately - simpler validation
+    if (plan.mode === 'metrics-only') {
+      // For metrics-only mode, we only allow closedWonCount and closedWonValue changes
+      // No complex validation needed - just return success with a preview
+      const metricsOnlyDeltas = plan.months.map(m => {
+        const currentMonth = currentKpis.find(k => k.month === m.month);
+        const currentWonCount = currentMonth?.metrics?.closedWonCount ?? 0;
+        const currentWonValue = currentMonth?.metrics?.closedWonValue ?? 0;
+        const targetWonCount = m.metrics.closedWonCount ?? currentWonCount;
+        const targetWonValue = m.metrics.closedWonValue ?? currentWonValue;
+
+        return {
+          month: m.month,
+          current: {
+            closedWonCount: currentWonCount,
+            closedWonValue: currentWonValue,
+          },
+          target: {
+            closedWonCount: targetWonCount,
+            closedWonValue: targetWonValue,
+          },
+          deltas: {
+            closedWonCount: { delta: targetWonCount - currentWonCount, canApply: true },
+            closedWonValue: { delta: targetWonValue - currentWonValue, canApply: true },
+          },
+        };
+      });
+
+      // Filter to only months with actual changes
+      const monthsWithChanges = metricsOnlyDeltas.filter(
+        d => d.deltas.closedWonCount.delta !== 0 || d.deltas.closedWonValue.delta !== 0
+      );
+
+      const preview = {
+        months: monthsWithChanges,
+        totalRecordsToCreate: 0, // No records created in metrics-only mode
+        estimatedDurationSeconds: 1, // Nearly instant
+        warnings: ['Metrics-only mode: Changes are applied as report adjustments without creating actual records.'],
+      };
+
+      return successResponse({
+        valid: true,
+        errors: [],
+        warnings: preview.warnings,
+        preview,
+        currentKpis,
+      });
+    }
+
+    // Standard validation for additive/reconcile modes
     const validation = await validatePatchPlan(tenantId, plan, currentKpis);
 
     if (!validation.valid) {

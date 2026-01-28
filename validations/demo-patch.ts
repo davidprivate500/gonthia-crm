@@ -26,7 +26,7 @@ export const toleranceConfigSchema = z.object({
 
 // Validate patch plan request
 export const validatePatchSchema = z.object({
-  mode: z.enum(['additive', 'reconcile']).default('additive'),
+  mode: z.enum(['additive', 'reconcile', 'metrics-only']).default('additive'),
   planType: z.enum(['targets', 'deltas']).default('deltas'),
   months: z.array(patchMonthTargetSchema).min(1, 'At least one month required').max(24, 'Maximum 24 months allowed'),
   tolerances: toleranceConfigSchema.optional(),

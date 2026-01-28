@@ -436,7 +436,7 @@ export const invoiceLineItems = pgTable('invoice_line_items', {
 export const demoGenerationModeEnum = pgEnum('demo_generation_mode', ['growth-curve', 'monthly-plan']);
 
 // Demo patch enums
-export const demoPatchModeEnum = pgEnum('demo_patch_mode', ['additive', 'reconcile']);
+export const demoPatchModeEnum = pgEnum('demo_patch_mode', ['additive', 'reconcile', 'metrics-only']);
 export const demoPatchPlanTypeEnum = pgEnum('demo_patch_plan_type', ['targets', 'deltas']);
 
 // Demo generation jobs - tracks each demo tenant generation
@@ -553,6 +553,27 @@ export const demoPatchJobs = pgTable('demo_patch_jobs', {
   index('idx_patch_jobs_created_at').on(table.createdAt),
   index('idx_patch_jobs_original_job').on(table.originalJobId),
   index('idx_patch_jobs_created_by').on(table.createdById),
+]);
+
+// Demo metric overrides - stores adjustments to report metrics without creating actual records
+// Used by the 'metrics-only' patch mode
+export const demoMetricOverrides = pgTable('demo_metric_overrides', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  // Month for which this override applies (YYYY-MM format)
+  month: varchar('month', { length: 7 }).notNull(),
+  // Metric overrides (these get ADDED to the computed values in reports)
+  closedWonCountOverride: integer('closed_won_count_override').notNull().default(0),
+  closedWonValueOverride: decimal('closed_won_value_override', { precision: 15, scale: 2 }).notNull().default('0'),
+  // Link to the patch job that created this override
+  patchJobId: uuid('patch_job_id').references(() => demoPatchJobs.id, { onDelete: 'set null' }),
+  // Timestamps
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_metric_overrides_tenant').on(table.tenantId),
+  index('idx_metric_overrides_month').on(table.tenantId, table.month),
+  uniqueIndex('idx_metric_overrides_tenant_month').on(table.tenantId, table.month),
 ]);
 
 // Relations
@@ -676,6 +697,11 @@ export const demoPatchJobsRelations = relations(demoPatchJobs, ({ one }) => ({
   createdBy: one(users, { fields: [demoPatchJobs.createdById], references: [users.id] }),
 }));
 
+export const demoMetricOverridesRelations = relations(demoMetricOverrides, ({ one }) => ({
+  tenant: one(tenants, { fields: [demoMetricOverrides.tenantId], references: [tenants.id] }),
+  patchJob: one(demoPatchJobs, { fields: [demoMetricOverrides.patchJobId], references: [demoPatchJobs.id] }),
+}));
+
 // Type exports
 export type Tenant = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;
@@ -714,6 +740,8 @@ export type DemoTenantMetadata = typeof demoTenantMetadata.$inferSelect;
 export type NewDemoTenantMetadata = typeof demoTenantMetadata.$inferInsert;
 export type DemoPatchJob = typeof demoPatchJobs.$inferSelect;
 export type NewDemoPatchJob = typeof demoPatchJobs.$inferInsert;
+export type DemoMetricOverride = typeof demoMetricOverrides.$inferSelect;
+export type NewDemoMetricOverride = typeof demoMetricOverrides.$inferInsert;
 export type DemoJobStatus = 'pending' | 'running' | 'completed' | 'failed';
-export type DemoPatchMode = 'additive' | 'reconcile';
+export type DemoPatchMode = 'additive' | 'reconcile' | 'metrics-only';
 export type DemoPatchPlanType = 'targets' | 'deltas';

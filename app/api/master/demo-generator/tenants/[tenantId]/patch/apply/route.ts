@@ -2,8 +2,8 @@ import { NextRequest } from 'next/server';
 import { requireMasterAdminWithCsrf } from '@/lib/auth/middleware';
 import { successResponse, validationError, formatZodErrors, badRequestError, internalError } from '@/lib/api/response';
 import { applyPatchSchema } from '@/validations/demo-patch';
-import { db, demoPatchJobs, demoTenantMetadata, demoGenerationJobs } from '@/lib/db';
-import { eq } from 'drizzle-orm';
+import { db, demoPatchJobs, demoTenantMetadata, demoGenerationJobs, demoMetricOverrides } from '@/lib/db';
+import { eq, and } from 'drizzle-orm';
 import { KpiAggregator } from '@/lib/demo-generator/engine/kpi-aggregator';
 import { validatePatchPlan, computeDeltas, validateDemoTenant } from '@/lib/demo-generator/engine/patch-validator';
 import { PatchEngine } from '@/lib/demo-generator/engine/patch-engine';
@@ -102,7 +102,116 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       logs: [],
     }).returning();
 
-    // Execute patch synchronously (wait for completion)
+    // Handle metrics-only mode separately - no PatchEngine needed
+    if (plan.mode === 'metrics-only') {
+      console.log(`[Patch] Starting metrics-only execution for job ${job.id}`);
+
+      await db.update(demoPatchJobs)
+        .set({ status: 'running', currentStep: 'Applying metric overrides', updatedAt: new Date() })
+        .where(eq(demoPatchJobs.id, job.id));
+
+      try {
+        // Get current KPIs to calculate deltas
+        const aggregator = new KpiAggregator(tenantId);
+        const kpis = await aggregator.queryMonthlyKpis(rangeStartMonth, rangeEndMonth);
+
+        // Process each month and upsert metric overrides
+        for (const monthPlan of plan.months) {
+          const month = monthPlan.month;
+          const currentMonth = kpis.find(k => k.month === month);
+          const currentWonCount = currentMonth?.metrics?.closedWonCount ?? 0;
+          const currentWonValue = currentMonth?.metrics?.closedWonValue ?? 0;
+
+          // Calculate the delta to apply (target - current = adjustment needed)
+          const targetWonCount = monthPlan.metrics.closedWonCount ?? currentWonCount;
+          const targetWonValue = monthPlan.metrics.closedWonValue ?? currentWonValue;
+          const wonCountDelta = targetWonCount - currentWonCount;
+          const wonValueDelta = targetWonValue - currentWonValue;
+
+          // Skip if no changes
+          if (wonCountDelta === 0 && wonValueDelta === 0) {
+            continue;
+          }
+
+          // Check if an override already exists for this tenant/month
+          const existingOverride = await db.query.demoMetricOverrides.findFirst({
+            where: and(
+              eq(demoMetricOverrides.tenantId, tenantId),
+              eq(demoMetricOverrides.month, month)
+            ),
+          });
+
+          if (existingOverride) {
+            // Update existing override by adding the new delta
+            const newCountOverride = Number(existingOverride.closedWonCountOverride) + wonCountDelta;
+            const newValueOverride = Number(existingOverride.closedWonValueOverride) + wonValueDelta;
+
+            await db.update(demoMetricOverrides)
+              .set({
+                closedWonCountOverride: newCountOverride,
+                closedWonValueOverride: String(newValueOverride),
+                patchJobId: job.id,
+                updatedAt: new Date(),
+              })
+              .where(eq(demoMetricOverrides.id, existingOverride.id));
+          } else {
+            // Insert new override
+            await db.insert(demoMetricOverrides).values({
+              tenantId,
+              month,
+              closedWonCountOverride: wonCountDelta,
+              closedWonValueOverride: String(wonValueDelta),
+              patchJobId: job.id,
+            });
+          }
+        }
+
+        // Mark job as completed
+        await db.update(demoPatchJobs)
+          .set({
+            status: 'completed',
+            progress: 100,
+            currentStep: 'Completed',
+            completedAt: new Date(),
+            updatedAt: new Date(),
+            metricsJson: {
+              recordsCreated: 0,
+              recordsModified: 0,
+              recordsDeleted: 0,
+              metricOverridesApplied: plan.months.length,
+            },
+          })
+          .where(eq(demoPatchJobs.id, job.id));
+
+        console.log(`[Patch] Metrics-only execution completed for job ${job.id}`);
+      } catch (error) {
+        console.error(`[Patch] Metrics-only execution failed for job ${job.id}:`, error);
+        await db.update(demoPatchJobs)
+          .set({
+            status: 'failed',
+            errorMessage: error instanceof Error ? error.message : String(error),
+            updatedAt: new Date(),
+          })
+          .where(eq(demoPatchJobs.id, job.id));
+      }
+
+      // Fetch final job status
+      const finalJob = await db.query.demoPatchJobs.findFirst({
+        where: eq(demoPatchJobs.id, job.id),
+      });
+
+      return successResponse({
+        jobId: job.id,
+        status: finalJob?.status ?? 'unknown',
+        seed,
+        rangeStartMonth,
+        rangeEndMonth,
+        progress: finalJob?.progress ?? 0,
+        currentStep: finalJob?.currentStep ?? 'Unknown',
+      });
+    }
+
+    // Standard execution for additive/reconcile modes
     console.log(`[Patch] Starting execution for job ${job.id}`);
 
     // First, verify the job was created
