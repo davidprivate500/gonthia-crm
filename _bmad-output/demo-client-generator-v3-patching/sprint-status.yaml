@@ -47,6 +47,32 @@ epics:
           - Warning banner for reconcile mode
           - Red highlighting for decreasing values
 
+  - id: "E3"
+    name: "METRICS-ONLY Mode Enhancement"
+    status: "completed"
+    stories:
+      - id: "E3-S1"
+        name: "Expand metrics-only mode to support all 6 metrics"
+        status: "completed"
+        completed_at: "2025-01-28"
+        notes: |
+          Implementation (BMAD workflow):
+          - Added 4 new columns to demoMetricOverrides table
+          - contactsCreatedOverride, companiesCreatedOverride, dealsCreatedOverride, activitiesCreatedOverride
+          - Updated frontend to enable all metrics in metrics-only mode
+          - Updated validation endpoint with business logic rules
+          - Updated apply endpoint to store all 6 override types
+          - Updated reports and dashboard APIs to apply all overrides
+
+          Code review fixes:
+          - Fixed decimal truncation: closedWonValue now uses parseFloat (was parseInt)
+          - Added step="0.01" for currency input fields
+          - Updated UI text to reflect all metrics can be edited
+          - Added validation: closedWonCount cannot exceed dealsCreated
+          - Added validation: closedWonValue requires closedWonCount > 0
+
+          Migration: 0004_metrics_only_all_fields.sql
+
 blockers: []
 
 risks:
@@ -55,7 +81,12 @@ risks:
     status: "mitigated"
 
 notes: |
-  RECONCILE mode feature complete and deployed.
+  METRICS-ONLY mode expanded to support ALL 6 metrics (2025-01-28):
+  - Users can now adjust: contacts, companies, deals, won deals, won value, activities
+  - Changes are stored as report adjustments without creating actual records
+  - Ideal for quickly adjusting dashboard and report numbers for demos
+
+  RECONCILE mode feature complete and deployed (2025-01-25).
 
   Bug fixes (commit 857916b):
   - CRITICAL: Fixed UTC timezone mismatch in patch-engine date ranges
