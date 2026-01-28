@@ -152,15 +152,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           });
 
           if (existingOverride) {
-            // Update existing override by adding the new deltas
+            // Replace existing override with new delta values
+            // (deltas are calculated from base values, so replacing ensures correct final totals)
             await db.update(demoMetricOverrides)
               .set({
-                contactsCreatedOverride: Number(existingOverride.contactsCreatedOverride) + contactsDelta,
-                companiesCreatedOverride: Number(existingOverride.companiesCreatedOverride) + companiesDelta,
-                dealsCreatedOverride: Number(existingOverride.dealsCreatedOverride) + dealsDelta,
-                closedWonCountOverride: Number(existingOverride.closedWonCountOverride) + wonCountDelta,
-                closedWonValueOverride: String(Number(existingOverride.closedWonValueOverride) + wonValueDelta),
-                activitiesCreatedOverride: Number(existingOverride.activitiesCreatedOverride) + activitiesDelta,
+                contactsCreatedOverride: contactsDelta,
+                companiesCreatedOverride: companiesDelta,
+                dealsCreatedOverride: dealsDelta,
+                closedWonCountOverride: wonCountDelta,
+                closedWonValueOverride: String(wonValueDelta),
+                activitiesCreatedOverride: activitiesDelta,
                 patchJobId: job.id,
                 updatedAt: new Date(),
               })
