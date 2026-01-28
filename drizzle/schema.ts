@@ -563,8 +563,12 @@ export const demoMetricOverrides = pgTable('demo_metric_overrides', {
   // Month for which this override applies (YYYY-MM format)
   month: varchar('month', { length: 7 }).notNull(),
   // Metric overrides (these get ADDED to the computed values in reports)
+  contactsCreatedOverride: integer('contacts_created_override').notNull().default(0),
+  companiesCreatedOverride: integer('companies_created_override').notNull().default(0),
+  dealsCreatedOverride: integer('deals_created_override').notNull().default(0),
   closedWonCountOverride: integer('closed_won_count_override').notNull().default(0),
   closedWonValueOverride: decimal('closed_won_value_override', { precision: 15, scale: 2 }).notNull().default('0'),
+  activitiesCreatedOverride: integer('activities_created_override').notNull().default(0),
   // Link to the patch job that created this override
   patchJobId: uuid('patch_job_id').references(() => demoPatchJobs.id, { onDelete: 'set null' }),
   // Timestamps

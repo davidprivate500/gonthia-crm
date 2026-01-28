@@ -230,11 +230,13 @@ export async function GET(request: NextRequest) {
     const startMonth = format(rangeFrom, 'yyyy-MM');
     const endMonth = format(rangeTo, 'yyyy-MM');
 
-    console.log('[Reports] Querying overrides for tenant:', auth.tenantId, 'months:', startMonth, 'to', endMonth);
-
     const overridesResult = await db.select({
+      contactsCreatedOverride: demoMetricOverrides.contactsCreatedOverride,
+      companiesCreatedOverride: demoMetricOverrides.companiesCreatedOverride,
+      dealsCreatedOverride: demoMetricOverrides.dealsCreatedOverride,
       closedWonCountOverride: demoMetricOverrides.closedWonCountOverride,
       closedWonValueOverride: demoMetricOverrides.closedWonValueOverride,
+      activitiesCreatedOverride: demoMetricOverrides.activitiesCreatedOverride,
     })
       .from(demoMetricOverrides)
       .where(and(
@@ -243,25 +245,30 @@ export async function GET(request: NextRequest) {
         lte(demoMetricOverrides.month, endMonth)
       ));
 
-    console.log('[Reports] Found overrides:', overridesResult);
-
     // Sum up all overrides in the date range
+    let contactsOverride = 0;
+    let companiesOverride = 0;
+    let dealsOverride = 0;
     let wonCountOverride = 0;
     let wonValueOverride = 0;
+    let activitiesOverride = 0;
+
     for (const override of overridesResult) {
+      contactsOverride += Number(override.contactsCreatedOverride) || 0;
+      companiesOverride += Number(override.companiesCreatedOverride) || 0;
+      dealsOverride += Number(override.dealsCreatedOverride) || 0;
       wonCountOverride += Number(override.closedWonCountOverride) || 0;
       wonValueOverride += parseFloat(String(override.closedWonValueOverride)) || 0;
+      activitiesOverride += Number(override.activitiesCreatedOverride) || 0;
     }
 
-    console.log('[Reports] Total overrides - count:', wonCountOverride, 'value:', wonValueOverride);
-
-    // Calculate base values
-    const baseWonDeals = wonDealsResult[0].count;
-    const baseWonValue = parseFloat(wonValueResult[0].total);
-
-    // Apply overrides (add to computed values)
-    const totalWonDeals = baseWonDeals + wonCountOverride;
-    const totalWonValue = baseWonValue + wonValueOverride;
+    // Calculate base values and apply overrides
+    const totalContacts = newContactsResult[0].count + contactsOverride;
+    const totalCompanies = newCompaniesResult[0].count + companiesOverride;
+    const totalDeals = newDealsResult[0].count + dealsOverride;
+    const totalWonDeals = wonDealsResult[0].count + wonCountOverride;
+    const totalWonValue = parseFloat(wonValueResult[0].total) + wonValueOverride;
+    const totalActivities = activitiesCountResult[0].count + activitiesOverride;
 
     // Format response
     const metrics = {
@@ -271,27 +278,27 @@ export async function GET(request: NextRequest) {
         preset: dateRange.preset,
       },
       contacts: {
-        new: newContactsResult[0].count,
+        new: totalContacts,
         newCustomers: newCustomersResult[0].count,
         byStatus: Object.fromEntries(
           contactsByStatusResult.map(r => [r.status, r.count])
         ),
       },
       companies: {
-        new: newCompaniesResult[0].count,
+        new: totalCompanies,
       },
       deals: {
-        new: newDealsResult[0].count,
+        new: totalDeals,
         won: totalWonDeals,
         lost: lostDealsResult[0].count,
         pipelineValue: parseFloat(newPipelineValueResult[0].total),
         wonValue: totalWonValue,
-        winRate: newDealsResult[0].count > 0
-          ? Math.round((totalWonDeals / newDealsResult[0].count) * 100)
+        winRate: totalDeals > 0
+          ? Math.round((totalWonDeals / totalDeals) * 100)
           : 0,
       },
       activities: {
-        total: activitiesCountResult[0].count,
+        total: totalActivities,
         byType: Object.fromEntries(
           activitiesByTypeResult.map(r => [r.type, r.count])
         ),

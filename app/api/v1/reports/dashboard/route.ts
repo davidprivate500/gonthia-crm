@@ -179,8 +179,12 @@ export async function GET(request: NextRequest) {
     const endMonth = format(rangeTo, 'yyyy-MM');
 
     const overridesResult = await db.select({
+      contactsCreatedOverride: demoMetricOverrides.contactsCreatedOverride,
+      companiesCreatedOverride: demoMetricOverrides.companiesCreatedOverride,
+      dealsCreatedOverride: demoMetricOverrides.dealsCreatedOverride,
       closedWonCountOverride: demoMetricOverrides.closedWonCountOverride,
       closedWonValueOverride: demoMetricOverrides.closedWonValueOverride,
+      activitiesCreatedOverride: demoMetricOverrides.activitiesCreatedOverride,
     })
       .from(demoMetricOverrides)
       .where(and(
@@ -190,11 +194,20 @@ export async function GET(request: NextRequest) {
       ));
 
     // Sum up all overrides in the date range
+    let contactsOverride = 0;
+    let companiesOverride = 0;
+    let dealsOverride = 0;
     let wonCountOverride = 0;
     let wonValueOverride = 0;
+    let activitiesOverride = 0;
+
     for (const override of overridesResult) {
+      contactsOverride += Number(override.contactsCreatedOverride) || 0;
+      companiesOverride += Number(override.companiesCreatedOverride) || 0;
+      dealsOverride += Number(override.dealsCreatedOverride) || 0;
       wonCountOverride += Number(override.closedWonCountOverride) || 0;
       wonValueOverride += parseFloat(String(override.closedWonValueOverride)) || 0;
+      activitiesOverride += Number(override.activitiesCreatedOverride) || 0;
     }
 
     // Map deals to stages, applying overrides to won stages
@@ -226,13 +239,13 @@ export async function GET(request: NextRequest) {
         preset: dateRange.preset,
       },
       summary: {
-        // Period metrics (filtered by date range)
-        newContacts: contactCount[0].count,
-        newCompanies: companyCount[0].count,
-        newDeals: dealCount[0].count,
-        activitiesCount: activityCount[0].count,
+        // Period metrics (filtered by date range) with overrides applied
+        newContacts: contactCount[0].count + contactsOverride,
+        newCompanies: companyCount[0].count + companiesOverride,
+        newDeals: dealCount[0].count + dealsOverride,
+        activitiesCount: activityCount[0].count + activitiesOverride,
         periodPipelineValue: parseFloat(pipelineValue[0].total),
-        // All-time totals
+        // All-time totals (no overrides applied to all-time)
         totalContacts: totalContactsAllTime[0].count,
         totalCompanies: totalCompaniesAllTime[0].count,
         totalDeals: totalDealsAllTime[0].count,

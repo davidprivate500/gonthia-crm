@@ -48,35 +48,92 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Handle metrics-only mode separately - simpler validation
     if (plan.mode === 'metrics-only') {
-      // For metrics-only mode, we only allow closedWonCount and closedWonValue changes
+      // For metrics-only mode, all metrics can be changed
       // No complex validation needed - just return success with a preview
       const metricsOnlyDeltas = plan.months.map(m => {
         const currentMonth = currentKpis.find(k => k.month === m.month);
-        const currentWonCount = currentMonth?.metrics?.closedWonCount ?? 0;
-        const currentWonValue = currentMonth?.metrics?.closedWonValue ?? 0;
+        const metrics = currentMonth?.metrics ?? {};
+
+        // Get current values with defaults
+        const currentContacts = metrics.contactsCreated ?? 0;
+        const currentCompanies = metrics.companiesCreated ?? 0;
+        const currentDeals = metrics.dealsCreated ?? 0;
+        const currentWonCount = metrics.closedWonCount ?? 0;
+        const currentWonValue = metrics.closedWonValue ?? 0;
+        const currentActivities = metrics.activitiesCreated ?? 0;
+
+        // Get target values (use current if not specified)
+        const targetContacts = m.metrics.contactsCreated ?? currentContacts;
+        const targetCompanies = m.metrics.companiesCreated ?? currentCompanies;
+        const targetDeals = m.metrics.dealsCreated ?? currentDeals;
         const targetWonCount = m.metrics.closedWonCount ?? currentWonCount;
         const targetWonValue = m.metrics.closedWonValue ?? currentWonValue;
+        const targetActivities = m.metrics.activitiesCreated ?? currentActivities;
 
         return {
           month: m.month,
           current: {
+            contactsCreated: currentContacts,
+            companiesCreated: currentCompanies,
+            dealsCreated: currentDeals,
             closedWonCount: currentWonCount,
             closedWonValue: currentWonValue,
+            activitiesCreated: currentActivities,
           },
           target: {
+            contactsCreated: targetContacts,
+            companiesCreated: targetCompanies,
+            dealsCreated: targetDeals,
             closedWonCount: targetWonCount,
             closedWonValue: targetWonValue,
+            activitiesCreated: targetActivities,
           },
           deltas: {
+            contactsCreated: { delta: targetContacts - currentContacts, canApply: true },
+            companiesCreated: { delta: targetCompanies - currentCompanies, canApply: true },
+            dealsCreated: { delta: targetDeals - currentDeals, canApply: true },
             closedWonCount: { delta: targetWonCount - currentWonCount, canApply: true },
             closedWonValue: { delta: targetWonValue - currentWonValue, canApply: true },
+            activitiesCreated: { delta: targetActivities - currentActivities, canApply: true },
           },
         };
       });
 
+      // Validate business rules for metrics-only mode
+      const validationErrors: string[] = [];
+      for (const d of metricsOnlyDeltas) {
+        // closedWonCount cannot exceed dealsCreated (target values)
+        if (d.target.closedWonCount > d.target.dealsCreated) {
+          validationErrors.push(
+            `${d.month}: closedWonCount (${d.target.closedWonCount}) cannot exceed dealsCreated (${d.target.dealsCreated})`
+          );
+        }
+        // closedWonValue requires closedWonCount > 0
+        if (d.target.closedWonValue > 0 && d.target.closedWonCount === 0) {
+          validationErrors.push(
+            `${d.month}: closedWonValue requires closedWonCount > 0`
+          );
+        }
+      }
+
+      if (validationErrors.length > 0) {
+        return successResponse({
+          valid: false,
+          errors: validationErrors,
+          warnings: [],
+          preview: null,
+          currentKpis,
+        });
+      }
+
       // Filter to only months with actual changes
-      const monthsWithChanges = metricsOnlyDeltas.filter(
-        d => d.deltas.closedWonCount.delta !== 0 || d.deltas.closedWonValue.delta !== 0
+      const monthsWithChanges = metricsOnlyDeltas.filter(d =>
+        d.deltas.contactsCreated.delta !== 0 ||
+        d.deltas.companiesCreated.delta !== 0 ||
+        d.deltas.dealsCreated.delta !== 0 ||
+        d.deltas.closedWonCount.delta !== 0 ||
+        d.deltas.closedWonValue.delta !== 0 ||
+        d.deltas.activitiesCreated.delta !== 0
       );
 
       const preview = {

@@ -119,17 +119,27 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         for (const monthPlan of plan.months) {
           const month = monthPlan.month;
           const currentMonth = kpis.find(k => k.month === month);
-          const currentWonCount = currentMonth?.metrics?.closedWonCount ?? 0;
-          const currentWonValue = currentMonth?.metrics?.closedWonValue ?? 0;
+          const metrics = currentMonth?.metrics ?? {};
 
-          // Calculate the delta to apply (target - current = adjustment needed)
-          const targetWonCount = monthPlan.metrics.closedWonCount ?? currentWonCount;
-          const targetWonValue = monthPlan.metrics.closedWonValue ?? currentWonValue;
-          const wonCountDelta = targetWonCount - currentWonCount;
-          const wonValueDelta = targetWonValue - currentWonValue;
+          // Get current values with defaults
+          const currentContacts = metrics.contactsCreated ?? 0;
+          const currentCompanies = metrics.companiesCreated ?? 0;
+          const currentDeals = metrics.dealsCreated ?? 0;
+          const currentWonCount = metrics.closedWonCount ?? 0;
+          const currentWonValue = metrics.closedWonValue ?? 0;
+          const currentActivities = metrics.activitiesCreated ?? 0;
+
+          // Calculate deltas (target - current = adjustment needed)
+          const contactsDelta = (monthPlan.metrics.contactsCreated ?? currentContacts) - currentContacts;
+          const companiesDelta = (monthPlan.metrics.companiesCreated ?? currentCompanies) - currentCompanies;
+          const dealsDelta = (monthPlan.metrics.dealsCreated ?? currentDeals) - currentDeals;
+          const wonCountDelta = (monthPlan.metrics.closedWonCount ?? currentWonCount) - currentWonCount;
+          const wonValueDelta = (monthPlan.metrics.closedWonValue ?? currentWonValue) - currentWonValue;
+          const activitiesDelta = (monthPlan.metrics.activitiesCreated ?? currentActivities) - currentActivities;
 
           // Skip if no changes
-          if (wonCountDelta === 0 && wonValueDelta === 0) {
+          if (contactsDelta === 0 && companiesDelta === 0 && dealsDelta === 0 &&
+              wonCountDelta === 0 && wonValueDelta === 0 && activitiesDelta === 0) {
             continue;
           }
 
@@ -142,14 +152,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           });
 
           if (existingOverride) {
-            // Update existing override by adding the new delta
-            const newCountOverride = Number(existingOverride.closedWonCountOverride) + wonCountDelta;
-            const newValueOverride = Number(existingOverride.closedWonValueOverride) + wonValueDelta;
-
+            // Update existing override by adding the new deltas
             await db.update(demoMetricOverrides)
               .set({
-                closedWonCountOverride: newCountOverride,
-                closedWonValueOverride: String(newValueOverride),
+                contactsCreatedOverride: Number(existingOverride.contactsCreatedOverride) + contactsDelta,
+                companiesCreatedOverride: Number(existingOverride.companiesCreatedOverride) + companiesDelta,
+                dealsCreatedOverride: Number(existingOverride.dealsCreatedOverride) + dealsDelta,
+                closedWonCountOverride: Number(existingOverride.closedWonCountOverride) + wonCountDelta,
+                closedWonValueOverride: String(Number(existingOverride.closedWonValueOverride) + wonValueDelta),
+                activitiesCreatedOverride: Number(existingOverride.activitiesCreatedOverride) + activitiesDelta,
                 patchJobId: job.id,
                 updatedAt: new Date(),
               })
@@ -159,8 +170,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             await db.insert(demoMetricOverrides).values({
               tenantId,
               month,
+              contactsCreatedOverride: contactsDelta,
+              companiesCreatedOverride: companiesDelta,
+              dealsCreatedOverride: dealsDelta,
               closedWonCountOverride: wonCountDelta,
               closedWonValueOverride: String(wonValueDelta),
+              activitiesCreatedOverride: activitiesDelta,
               patchJobId: job.id,
             });
           }

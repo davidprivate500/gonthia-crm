@@ -249,7 +249,8 @@ export default function MonthlyUpdatesPage() {
 
   // Handle target value change
   const handleTargetChange = (monthIdx: number, metric: keyof TargetMetrics, value: string) => {
-    const numValue = value === '' ? 0 : parseInt(value, 10);
+    // Use parseFloat for closedWonValue (currency), parseInt for all other metrics (counts)
+    const numValue = value === '' ? 0 : (metric === 'closedWonValue' ? parseFloat(value) : parseInt(value, 10));
     if (isNaN(numValue) || numValue < 0) return;
 
     const updated = [...monthTargets];
@@ -504,7 +505,7 @@ export default function MonthlyUpdatesPage() {
                             )}
                           </div>
                           <p className="text-sm text-gray-600">
-                            Change Won Deals &amp; Won Value on reports without adding records.
+                            Adjust all report metrics without creating actual records.
                           </p>
                         </button>
                         <button
@@ -553,8 +554,8 @@ export default function MonthlyUpdatesPage() {
                             Metrics Only Mode
                           </div>
                           <p className="text-sm text-purple-600 mt-1">
-                            Only <strong>Won Deals</strong> and <strong>Won Value</strong> can be modified.
-                            Changes are applied as report adjustments without creating actual deal or contact records.
+                            All metrics can be modified. Changes are applied as <strong>report adjustments</strong> without
+                            creating actual records. Ideal for quickly adjusting dashboard and report numbers.
                           </p>
                         </div>
                       )}
@@ -581,7 +582,7 @@ export default function MonthlyUpdatesPage() {
                       <CardTitle>Monthly Metrics</CardTitle>
                       <CardDescription>
                         {patchMode === 'metrics-only'
-                          ? 'Only Won Deals and Won Value can be edited in Metrics Only mode.'
+                          ? 'Edit values directly. Changes are applied as report adjustments without creating records.'
                           : `Edit values directly. Green = increase, ${patchMode === 'additive' ? 'yellow = cannot decrease in additive mode' : 'red = will delete records'}.`}
                       </CardDescription>
                     </CardHeader>
@@ -611,16 +612,11 @@ export default function MonthlyUpdatesPage() {
                             </thead>
                             <tbody>
                               {METRIC_CONFIG.map((metric) => {
-                                // In metrics-only mode, only allow editing closedWonCount and closedWonValue
-                                const isMetricsOnlyAllowed = metric.key === 'closedWonCount' || metric.key === 'closedWonValue';
-                                const isDisabled = patchMode === 'metrics-only' && !isMetricsOnlyAllowed;
-
                                 return (
-                                  <tr key={metric.key} className={`hover:bg-gray-50 ${isDisabled ? 'opacity-50' : ''}`}>
+                                  <tr key={metric.key} className="hover:bg-gray-50">
                                     <td className="p-2 font-medium text-gray-700 border sticky left-0 bg-white z-10">
                                       {metric.label}
                                       {metric.isCurrency && <span className="text-gray-400 ml-1">($)</span>}
-                                      {isDisabled && <span className="text-gray-400 ml-1 text-xs">(disabled)</span>}
                                     </td>
                                     {monthTargets.map((m, idx) => {
                                       const delta = getDelta(idx, metric.key);
@@ -633,27 +629,29 @@ export default function MonthlyUpdatesPage() {
                                             <Input
                                               type="number"
                                               min={0}
+                                              step={metric.isCurrency ? '0.01' : '1'}
                                               value={m.target[metric.key]}
                                               onChange={(e) => handleTargetChange(idx, metric.key, e.target.value)}
-                                              disabled={isDisabled}
                                               className={`text-right h-9 pr-2 ${
-                                                isDisabled
-                                                  ? 'bg-gray-100 cursor-not-allowed'
-                                                  : changed
-                                                    ? isDecrease
-                                                      ? patchMode === 'reconcile'
-                                                        ? 'border-red-400 bg-red-50'
+                                                changed
+                                                  ? isDecrease
+                                                    ? patchMode === 'reconcile'
+                                                      ? 'border-red-400 bg-red-50'
+                                                      : patchMode === 'metrics-only'
+                                                        ? 'border-purple-400 bg-purple-50'
                                                         : 'border-yellow-400 bg-yellow-50'
-                                                      : 'border-green-400 bg-green-50'
-                                                    : ''
+                                                    : 'border-green-400 bg-green-50'
+                                                  : ''
                                               }`}
                                             />
-                                            {changed && !isDisabled && (
+                                            {changed && (
                                               <span className={`absolute -top-2 -right-1 text-xs font-medium px-1 rounded ${
                                                 isDecrease
                                                   ? patchMode === 'reconcile'
                                                     ? 'text-red-600'
-                                                    : 'text-yellow-600'
+                                                    : patchMode === 'metrics-only'
+                                                      ? 'text-purple-600'
+                                                      : 'text-yellow-600'
                                                   : 'text-green-600'
                                               }`}>
                                                 {delta > 0 ? '+' : ''}{delta.toLocaleString()}
