@@ -193,21 +193,31 @@ export async function GET(request: NextRequest) {
         lte(demoMetricOverrides.month, endMonth)
       ));
 
-    // Sum up all overrides in the date range
-    let contactsOverride = 0;
-    let companiesOverride = 0;
-    let dealsOverride = 0;
-    let wonCountOverride = 0;
-    let wonValueOverride = 0;
-    let activitiesOverride = 0;
+    // Process overrides - for metrics-only mode, these are ABSOLUTE target values
+    // A value of -1 means "not set, use base"
+    // Any other value is the target to display directly
+    let contactsTarget: number | null = null;
+    let companiesTarget: number | null = null;
+    let dealsTarget: number | null = null;
+    let wonCountTarget: number | null = null;
+    let wonValueTarget: number | null = null;
+    let activitiesTarget: number | null = null;
 
     for (const override of overridesResult) {
-      contactsOverride += Number(override.contactsCreatedOverride) || 0;
-      companiesOverride += Number(override.companiesCreatedOverride) || 0;
-      dealsOverride += Number(override.dealsCreatedOverride) || 0;
-      wonCountOverride += Number(override.closedWonCountOverride) || 0;
-      wonValueOverride += parseFloat(String(override.closedWonValueOverride)) || 0;
-      activitiesOverride += Number(override.activitiesCreatedOverride) || 0;
+      const contacts = Number(override.contactsCreatedOverride);
+      const companies = Number(override.companiesCreatedOverride);
+      const deals = Number(override.dealsCreatedOverride);
+      const wonCount = Number(override.closedWonCountOverride);
+      const wonValue = parseFloat(String(override.closedWonValueOverride));
+      const activities = Number(override.activitiesCreatedOverride);
+
+      // Use override if it's a valid target (not -1 sentinel)
+      if (contacts >= 0) contactsTarget = (contactsTarget ?? 0) + contacts;
+      if (companies >= 0) companiesTarget = (companiesTarget ?? 0) + companies;
+      if (deals >= 0) dealsTarget = (dealsTarget ?? 0) + deals;
+      if (wonCount >= 0) wonCountTarget = (wonCountTarget ?? 0) + wonCount;
+      if (wonValue >= 0) wonValueTarget = (wonValueTarget ?? 0) + wonValue;
+      if (activities >= 0) activitiesTarget = (activitiesTarget ?? 0) + activities;
     }
 
     // Map deals to stages, applying overrides to won stages
@@ -216,12 +226,12 @@ export async function GET(request: NextRequest) {
       const baseDealCount = stageData?.count || 0;
       const baseTotalValue = parseFloat(stageData?.totalValue || '0');
 
-      // Apply overrides to won stages
+      // For won stages, use target if set, otherwise use base
       if (stage.isWon) {
         return {
           ...stage,
-          dealCount: baseDealCount + wonCountOverride,
-          totalValue: baseTotalValue + wonValueOverride,
+          dealCount: wonCountTarget ?? baseDealCount,
+          totalValue: wonValueTarget ?? baseTotalValue,
         };
       }
 
@@ -239,11 +249,11 @@ export async function GET(request: NextRequest) {
         preset: dateRange.preset,
       },
       summary: {
-        // Period metrics (filtered by date range) with overrides applied
-        newContacts: contactCount[0].count + contactsOverride,
-        newCompanies: companyCount[0].count + companiesOverride,
-        newDeals: dealCount[0].count + dealsOverride,
-        activitiesCount: activityCount[0].count + activitiesOverride,
+        // Period metrics - use target if set, otherwise use base query result
+        newContacts: contactsTarget ?? contactCount[0].count,
+        newCompanies: companiesTarget ?? companyCount[0].count,
+        newDeals: dealsTarget ?? dealCount[0].count,
+        activitiesCount: activitiesTarget ?? activityCount[0].count,
         periodPipelineValue: parseFloat(pipelineValue[0].total),
         // All-time totals (no overrides applied to all-time)
         totalContacts: totalContactsAllTime[0].count,

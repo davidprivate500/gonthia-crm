@@ -118,28 +118,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         // Process each month and upsert metric overrides
         for (const monthPlan of plan.months) {
           const month = monthPlan.month;
-          const currentMonth = kpis.find(k => k.month === month);
-          const metrics = currentMonth?.metrics ?? {} as Record<string, number>;
+          // For metrics-only mode, we store the TARGET values directly (not deltas)
+          // This ensures Reports shows the exact value the user entered, regardless of base query differences
+          const targetContacts = monthPlan.metrics.contactsCreated;
+          const targetCompanies = monthPlan.metrics.companiesCreated;
+          const targetDeals = monthPlan.metrics.dealsCreated;
+          const targetWonCount = monthPlan.metrics.closedWonCount;
+          const targetWonValue = monthPlan.metrics.closedWonValue;
+          const targetActivities = monthPlan.metrics.activitiesCreated;
 
-          // Get current values with defaults
-          const currentContacts = (metrics.contactsCreated as number) ?? 0;
-          const currentCompanies = (metrics.companiesCreated as number) ?? 0;
-          const currentDeals = (metrics.dealsCreated as number) ?? 0;
-          const currentWonCount = (metrics.closedWonCount as number) ?? 0;
-          const currentWonValue = (metrics.closedWonValue as number) ?? 0;
-          const currentActivities = (metrics.activitiesCreated as number) ?? 0;
-
-          // Calculate deltas (target - current = adjustment needed)
-          const contactsDelta = (monthPlan.metrics.contactsCreated ?? currentContacts) - currentContacts;
-          const companiesDelta = (monthPlan.metrics.companiesCreated ?? currentCompanies) - currentCompanies;
-          const dealsDelta = (monthPlan.metrics.dealsCreated ?? currentDeals) - currentDeals;
-          const wonCountDelta = (monthPlan.metrics.closedWonCount ?? currentWonCount) - currentWonCount;
-          const wonValueDelta = (monthPlan.metrics.closedWonValue ?? currentWonValue) - currentWonValue;
-          const activitiesDelta = (monthPlan.metrics.activitiesCreated ?? currentActivities) - currentActivities;
-
-          // Skip if no changes
-          if (contactsDelta === 0 && companiesDelta === 0 && dealsDelta === 0 &&
-              wonCountDelta === 0 && wonValueDelta === 0 && activitiesDelta === 0) {
+          // Skip if no targets specified
+          if (targetContacts === undefined && targetCompanies === undefined &&
+              targetDeals === undefined && targetWonCount === undefined &&
+              targetWonValue === undefined && targetActivities === undefined) {
             continue;
           }
 
@@ -152,31 +143,32 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           });
 
           if (existingOverride) {
-            // Replace existing override with new delta values
-            // (deltas are calculated from base values, so replacing ensures correct final totals)
+            // Update existing override with new target values
+            // For metrics-only mode, we store the TARGET directly (use -1 as "not set" sentinel for integers)
+            // Reports will use these values directly instead of adding to base
             await db.update(demoMetricOverrides)
               .set({
-                contactsCreatedOverride: contactsDelta,
-                companiesCreatedOverride: companiesDelta,
-                dealsCreatedOverride: dealsDelta,
-                closedWonCountOverride: wonCountDelta,
-                closedWonValueOverride: String(wonValueDelta),
-                activitiesCreatedOverride: activitiesDelta,
+                contactsCreatedOverride: targetContacts ?? -1,
+                companiesCreatedOverride: targetCompanies ?? -1,
+                dealsCreatedOverride: targetDeals ?? -1,
+                closedWonCountOverride: targetWonCount ?? -1,
+                closedWonValueOverride: String(targetWonValue ?? -1),
+                activitiesCreatedOverride: targetActivities ?? -1,
                 patchJobId: job.id,
                 updatedAt: new Date(),
               })
               .where(eq(demoMetricOverrides.id, existingOverride.id));
           } else {
-            // Insert new override
+            // Insert new override with target values
             await db.insert(demoMetricOverrides).values({
               tenantId,
               month,
-              contactsCreatedOverride: contactsDelta,
-              companiesCreatedOverride: companiesDelta,
-              dealsCreatedOverride: dealsDelta,
-              closedWonCountOverride: wonCountDelta,
-              closedWonValueOverride: String(wonValueDelta),
-              activitiesCreatedOverride: activitiesDelta,
+              contactsCreatedOverride: targetContacts ?? -1,
+              companiesCreatedOverride: targetCompanies ?? -1,
+              dealsCreatedOverride: targetDeals ?? -1,
+              closedWonCountOverride: targetWonCount ?? -1,
+              closedWonValueOverride: String(targetWonValue ?? -1),
+              activitiesCreatedOverride: targetActivities ?? -1,
               patchJobId: job.id,
             });
           }
