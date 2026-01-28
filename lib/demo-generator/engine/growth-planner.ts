@@ -89,17 +89,23 @@ export class GrowthPlanner {
     // Distribute targets across months
     const { targets } = this.config;
 
-    return this.months.map((month, index) => ({
-      ...month,
-      targets: {
-        leads: Math.max(1, Math.round(targets.leads * normalizedWeights[index])),
-        contacts: Math.max(1, Math.round(targets.contacts * normalizedWeights[index])),
-        companies: Math.max(1, Math.round(targets.companies * normalizedWeights[index])),
-        deals: Math.max(1, Math.round(targets.closedWonCount * normalizedWeights[index])),
-        pipelineValue: targets.pipelineValue * normalizedWeights[index],
-        closedWonValue: targets.closedWonValue * normalizedWeights[index],
-      },
-    }));
+    return this.months.map((month, index) => {
+      const leads = Math.max(1, Math.round(targets.leads * normalizedWeights[index]));
+      const contacts = Math.max(1, Math.round(targets.contacts * normalizedWeights[index]));
+
+      return {
+        ...month,
+        targets: {
+          // Ensure leads <= contacts (leads are a subset of contacts)
+          leads: Math.min(leads, contacts),
+          contacts,
+          companies: Math.max(1, Math.round(targets.companies * normalizedWeights[index])),
+          deals: Math.max(1, Math.round(targets.closedWonCount * normalizedWeights[index])),
+          pipelineValue: targets.pipelineValue * normalizedWeights[index],
+          closedWonValue: targets.closedWonValue * normalizedWeights[index],
+        },
+      };
+    });
   }
 
   /**
@@ -225,8 +231,8 @@ export class GrowthPlanner {
       errors.push('Leads count too low for number of months');
     }
 
-    if (targets.contacts > targets.leads) {
-      errors.push('Contacts cannot exceed leads');
+    if (targets.leads > targets.contacts) {
+      errors.push('Leads cannot exceed contacts - leads are a subset of contacts');
     }
 
     if (targets.closedWonValue > targets.pipelineValue) {
