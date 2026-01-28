@@ -230,6 +230,8 @@ export async function GET(request: NextRequest) {
     const startMonth = format(rangeFrom, 'yyyy-MM');
     const endMonth = format(rangeTo, 'yyyy-MM');
 
+    console.log('[Reports] Querying overrides for tenant:', auth.tenantId, 'months:', startMonth, 'to', endMonth);
+
     const overridesResult = await db.select({
       closedWonCountOverride: demoMetricOverrides.closedWonCountOverride,
       closedWonValueOverride: demoMetricOverrides.closedWonValueOverride,
@@ -241,6 +243,8 @@ export async function GET(request: NextRequest) {
         lte(demoMetricOverrides.month, endMonth)
       ));
 
+    console.log('[Reports] Found overrides:', overridesResult);
+
     // Sum up all overrides in the date range
     let wonCountOverride = 0;
     let wonValueOverride = 0;
@@ -248,6 +252,8 @@ export async function GET(request: NextRequest) {
       wonCountOverride += Number(override.closedWonCountOverride) || 0;
       wonValueOverride += parseFloat(String(override.closedWonValueOverride)) || 0;
     }
+
+    console.log('[Reports] Total overrides - count:', wonCountOverride, 'value:', wonValueOverride);
 
     // Calculate base values
     const baseWonDeals = wonDealsResult[0].count;
