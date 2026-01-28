@@ -1,13 +1,14 @@
 import { NextRequest } from 'next/server';
-import { db, contacts, companies, deals, activities, pipelineStages } from '@/lib/db';
+import { db, contacts, companies, deals, activities, pipelineStages, demoMetricOverrides } from '@/lib/db';
 import { requireTenantAuth } from '@/lib/auth/middleware';
 import { successResponse, internalError, badRequestError } from '@/lib/api/response';
-import { eq, and, isNull, count, sql, gte, lt, asc } from 'drizzle-orm';
+import { eq, and, isNull, count, sql, gte, lt, lte, asc } from 'drizzle-orm';
 import {
   type DatePresetKey,
   parseDateRange,
   resolvePreset,
 } from '@/lib/dates';
+import { format } from 'date-fns';
 
 export async function GET(request: NextRequest) {
   try {
@@ -173,13 +174,48 @@ export async function GET(request: NextRequest) {
         )),
     ]);
 
-    // Map deals to stages
+    // Query metric overrides for the date range
+    const startMonth = format(rangeFrom, 'yyyy-MM');
+    const endMonth = format(rangeTo, 'yyyy-MM');
+
+    const overridesResult = await db.select({
+      closedWonCountOverride: demoMetricOverrides.closedWonCountOverride,
+      closedWonValueOverride: demoMetricOverrides.closedWonValueOverride,
+    })
+      .from(demoMetricOverrides)
+      .where(and(
+        eq(demoMetricOverrides.tenantId, auth.tenantId),
+        gte(demoMetricOverrides.month, startMonth),
+        lte(demoMetricOverrides.month, endMonth)
+      ));
+
+    // Sum up all overrides in the date range
+    let wonCountOverride = 0;
+    let wonValueOverride = 0;
+    for (const override of overridesResult) {
+      wonCountOverride += Number(override.closedWonCountOverride) || 0;
+      wonValueOverride += parseFloat(String(override.closedWonValueOverride)) || 0;
+    }
+
+    // Map deals to stages, applying overrides to won stages
     const stagesWithDeals = stages.map(stage => {
       const stageData = dealsByStage.find(d => d.stageId === stage.id);
+      const baseDealCount = stageData?.count || 0;
+      const baseTotalValue = parseFloat(stageData?.totalValue || '0');
+
+      // Apply overrides to won stages
+      if (stage.isWon) {
+        return {
+          ...stage,
+          dealCount: baseDealCount + wonCountOverride,
+          totalValue: baseTotalValue + wonValueOverride,
+        };
+      }
+
       return {
         ...stage,
-        dealCount: stageData?.count || 0,
-        totalValue: parseFloat(stageData?.totalValue || '0'),
+        dealCount: baseDealCount,
+        totalValue: baseTotalValue,
       };
     });
 
