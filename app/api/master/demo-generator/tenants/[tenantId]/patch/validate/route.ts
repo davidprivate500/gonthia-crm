@@ -52,15 +52,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       // No complex validation needed - just return success with a preview
       const metricsOnlyDeltas = plan.months.map(m => {
         const currentMonth = currentKpis.find(k => k.month === m.month);
-        const metrics = currentMonth?.metrics ?? {};
+        const metrics = currentMonth?.metrics ?? {} as Record<string, number>;
 
         // Get current values with defaults
-        const currentContacts = metrics.contactsCreated ?? 0;
-        const currentCompanies = metrics.companiesCreated ?? 0;
-        const currentDeals = metrics.dealsCreated ?? 0;
-        const currentWonCount = metrics.closedWonCount ?? 0;
-        const currentWonValue = metrics.closedWonValue ?? 0;
-        const currentActivities = metrics.activitiesCreated ?? 0;
+        const currentContacts = (metrics.contactsCreated as number) ?? 0;
+        const currentCompanies = (metrics.companiesCreated as number) ?? 0;
+        const currentDeals = (metrics.dealsCreated as number) ?? 0;
+        const currentWonCount = (metrics.closedWonCount as number) ?? 0;
+        const currentWonValue = (metrics.closedWonValue as number) ?? 0;
+        const currentActivities = (metrics.activitiesCreated as number) ?? 0;
 
         // Get target values (use current if not specified)
         const targetContacts = m.metrics.contactsCreated ?? currentContacts;
